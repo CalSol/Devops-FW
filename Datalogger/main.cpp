@@ -2,7 +2,6 @@
 
 #include <can_id.h>
 #include <can_struct.h>
-//#include <encoding.h>
 
 #define DEBUG_ENABLED
 #include "debug.h"
