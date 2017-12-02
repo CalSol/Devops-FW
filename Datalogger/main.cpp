@@ -188,20 +188,6 @@ void writeHeader(DataloggerProtoFile& datalogger) {
   datalogger.write(rec);
 }
 
-/**
- * HARDCODED TIME SET, TODO: Replace with something convenient (USB/CAN msg idk)
- */
-void setRTC() {
-  tm time;
-  time.tm_year = 100 + 17;
-  time.tm_mon = 5 - 1;
-  time.tm_mday = 16;
-  time.tm_hour = 3;
-  time.tm_min = 33;
-  time.tm_sec = 15;
-  RTC.settime(time);
-}
-
 enum DataloggerState {
   kInactive,
   kUnsafeEject,
@@ -294,8 +280,11 @@ int main() {
     debugWarn("WDT Reset");
   }
 
+  // For manually resetting the RTC
 //  while (SW1);
-//  setRTC(); //TEMPORARY !!!! - USE ONLY TO SET TIME ONCE
+//  RTC.settime({00, 33, 07,  02, 12 - 1, 2017 - 1900});
+//  //           ss  mm  hh   dd  mm      yyyy
+
   tm time;
   bool timeGood = RTC.gettime(&time);
   debugInfo("RTC %s %04d-%02d-%02d %02d:%02d:%02d", timeGood ? "OK" : "Stopped",
