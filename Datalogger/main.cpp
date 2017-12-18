@@ -33,13 +33,13 @@ DigitalIn BOD(P0_0);  // Brown-out detect
 
 // Comms interfaces
 CAN can(P0_7, P0_9);
-CANRXTX_Time_Buffer<128, 16> canBuffer(can, timestamp);
+CANTimestampedRxBuffer<128> canBuffer(can, timestamp);
 
 SPI spi0(P0_24, P0_26, P0_25);
 I2C i2c(P0_23, P0_22);
 
 DigitalIn SD_CD(P0_15);
-SDFileSystem sd(P0_13, P0_11, P0_12, P0_14, "sd", 15000000);
+SDFileSystem sd(P0_13, P0_11, P0_12, P0_14, "sd");
 DataloggerProtoFile datalogger(sd);
 
 // Sensors
@@ -243,6 +243,7 @@ bool mountSd(bool wasWdtReset, uint32_t sdInsertedTimestamp,
   tmDateToStr(dirname, time);
   tmMinToStr(filename, time);
 
+  sd.set_transfer_sck(15000000);
   bool openSuccess = !sd.disk_initialize() && datalogger.newFile(dirname, filename);
   uint32_t initTimestamp = timestamp.read_ms();
 
@@ -381,8 +382,6 @@ int main() {
       }
     } else if (state == kActive) {
       if (SD_CD) {  // unsafe dismount
-        sd.disk_disconnected();
-
         state = kUnsafeEject;
         debugInfo("FSM -> kUnsafeEject: unsafe dismount");
         MainStatusLed.setIdle(RgbActivity::kOff);
@@ -390,7 +389,6 @@ int main() {
       } else if (!SW1) {  // user-requested dismount
         datalogger.write(generateInfoRecord("User dismount", kSystem, timestamp.read_ms()));
         datalogger.closeFile();
-        sd.disk_disconnected();
 
         state = kUserDismount;
         debugInfo("FSM -> kUserDismount: switch pressed");
@@ -399,7 +397,6 @@ int main() {
       } else if (rail3v3Avg.read() < kDismountThreshold_mV) {  // undervoltage dismount
         datalogger.write(generateInfoRecord("Undervoltage dismount", kSystem, timestamp.read_ms()));
         datalogger.closeFile();
-        sd.disk_disconnected();
 
         state = kInactive;
         debugInfo("FSM -> kInactive: undervoltage");
