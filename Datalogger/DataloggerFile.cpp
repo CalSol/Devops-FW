@@ -88,13 +88,12 @@ bool DataloggerFile::newFile(const char* dirname, const char* basename) {
   strcpy(filename + dirnameLen + 1, basename);
   size_t basenameEnd = dirnameLen + 1 + basenameLen;
 
-  DirHandle* dir = filesystem_.opendir(dirname);
-
-  if (dir != NULL) {
+  DirHandle* dir;
+  if (!filesystem_.open(&dir, dirname)) {
     debugInfo("Opened dir '%s'", dirname);
     struct dirent *dirp;
     uint32_t nextFilenameSeq = 0;
-    while ((dirp = dir->readdir()) != NULL) {
+    while (dir->read(dirp) > 0) {
       const char* dirFilename = dirp->d_name;
       debugInfo("Found file '%s'", dirFilename);
 
@@ -118,7 +117,7 @@ bool DataloggerFile::newFile(const char* dirname, const char* basename) {
         }
       }
     }
-    dir->closedir();
+    dir->close();
 
     if (nextFilenameSeq > 0) {
       if (basenameLen > 6) {
@@ -146,12 +145,10 @@ bool DataloggerFile::newFile(const char* dirname, const char* basename) {
   }
 
   debugInfo("Opening file '%s'", filename);
-  file_ = filesystem_.open(filename, O_WRONLY | O_CREAT | O_TRUNC);
-
-  if (file_ == NULL) {
-    debugWarn("File open failed");
-  } else {
+  if (!filesystem_.open(&file_, filename, O_WRONLY | O_CREAT | O_TRUNC)) {
     debugInfo("File open OK");
+  } else {
+    debugWarn("File open failed");
   }
 
   return file_ != NULL;
@@ -161,7 +158,7 @@ bool DataloggerFile::syncFile() {
   if (file_ == NULL) {
     return false;  // TODO: perhaps assert out?
   }
-  file_->fsync();
+  file_->sync();
 }
 
 bool DataloggerFile::closeFile() {
