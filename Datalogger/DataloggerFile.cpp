@@ -91,10 +91,10 @@ bool DataloggerFile::newFile(const char* dirname, const char* basename) {
   DirHandle* dir;
   if (!filesystem_.open(&dir, dirname)) {
     debugInfo("Opened dir '%s'", dirname);
-    struct dirent *dirp;
+    struct dirent dirp;
     uint32_t nextFilenameSeq = 0;
-    while (dir->read(dirp) > 0) {
-      const char* dirFilename = dirp->d_name;
+    while (dir->read(&dirp) > 0) {
+      const char* dirFilename = dirp.d_name;
       debugInfo("Found file '%s'", dirFilename);
 
       if (strPrefixMatch(basename, dirFilename, basenameLen)) {
