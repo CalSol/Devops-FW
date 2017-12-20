@@ -32,7 +32,7 @@ LongTimer timestamp(usTimer);
 DigitalIn BOD(P0_0);  // Brown-out detect
 
 // Comms interfaces
-CAN can(P0_7, P0_9);
+CAN can(P0_7, P0_9, CAN_FREQUENCY);
 CANTimestampedRxBuffer<128> canBuffer(can, timestamp);
 
 SPI spi0(P0_24, P0_26, P0_25);
@@ -291,8 +291,6 @@ int main() {
   debugInfo("RTC %s %04d-%02d-%02d %02d:%02d:%02d", timeGood ? "OK" : "Stopped",
       time.tm_year + 1900, time.tm_mon + 1, time.tm_mday,
       time.tm_hour, time.tm_min, time.tm_sec);
-
-  can.frequency(CAN_FREQUENCY);
 
   TimerTicker statusIndicatorTicker(kHeartbeatPeriod_us, usTimer);
   TimerTicker voltageSenseTicker(kVoltageSensePeriod_us, usTimer);
