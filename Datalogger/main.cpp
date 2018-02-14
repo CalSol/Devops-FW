@@ -82,8 +82,8 @@ const uint32_t kFileSyncPeriod_us = 5000 * 1000;
 
 const uint32_t kRemountPeriod_us = 250 * 1000;
 
-const uint16_t kMountThreshold_mV = 3100;
-const uint16_t kDismountThreshold_mV = 2850;
+const uint16_t kMountThreshold_mV = 3750;
+const uint16_t kDismountThreshold_mV = 3500;
 
 enum SourceId {
   kUnknown = 0,
@@ -314,7 +314,7 @@ int main() {
   // Histogram buckets in us
   Histogram<8, int32_t, uint32_t> loopDistribution({33, 100, 333, 1000, 3333, 10000, 33333, 100000});
 
-  MovingAverage<uint16_t, uint32_t, 8> rail3v3Avg;
+  MovingAverage<uint16_t, uint32_t, 8> railSupercapAvg;
 
   DataloggerState state = kInactive;
 
@@ -332,7 +332,7 @@ int main() {
 
     if (state == kInactive || state == kUnsafeEject) {
       if (!SD_CD
-          && rail3v3Avg.read() > kMountThreshold_mV) {  // card inserted
+          && railSupercapAvg.read() > kMountThreshold_mV) {  // card inserted
         sdInsertedTimestamp = timestamp.read_ms();
 
         if (mountSd(wasWdtReset, sdInsertedTimestamp, sd, datalogger)) {
@@ -351,13 +351,13 @@ int main() {
           MainStatusLed.setIdle(RgbActivity::kOff);
           SdStatusLed.setIdle(RgbActivity::kRed);
         }
-      } else if (rail3v3Avg.read() <= kMountThreshold_mV) {
+      } else if (railSupercapAvg.read() <= kMountThreshold_mV) {
         MainStatusLed.setIdle(RgbActivity::kPurple);
-      } else if (rail3v3Avg.read() > kMountThreshold_mV) {
+      } else if (railSupercapAvg.read() > kMountThreshold_mV) {
         MainStatusLed.setIdle(RgbActivity::kOff);
       }
     } else if (state == kBadCard) {
-      if (SD_CD || rail3v3Avg.read() <= kMountThreshold_mV) {  // disk ejected
+      if (SD_CD || railSupercapAvg.read() <= kMountThreshold_mV) {  // disk ejected
         state = kInactive;
         debugInfo("FSM -> kInactive: ejected / undervoltage");
         MainStatusLed.setIdle(RgbActivity::kOff);
@@ -392,7 +392,7 @@ int main() {
         debugInfo("FSM -> kUserDismount: switch pressed");
         MainStatusLed.setIdle(RgbActivity::kBlue);
         SdStatusLed.setIdle(RgbActivity::kBlue);
-      } else if (rail3v3Avg.read() < kDismountThreshold_mV) {  // undervoltage dismount
+      } else if (railSupercapAvg.read() < kDismountThreshold_mV) {  // undervoltage dismount
         datalogger.write(generateInfoRecord("Undervoltage dismount", kSystem, timestamp.read_ms()));
         datalogger.closeFile();
 
@@ -443,7 +443,6 @@ int main() {
       // The 3.3 rail will be used to control dismount, so must be accurate even
       // as Vref+ dips and is referenced to the internal 0.9v bandgap
       uint16_t rail3v3BandgapSample = (uint32_t)rail3v3Sample * vrefpSample * (1+1) / 1 / 4095;
-      rail3v3Avg.update(rail3v3BandgapSample);
 
       // The precision 3v reference is more accurate than the internal bandgap,
       // so log measurements according to that.
@@ -458,6 +457,8 @@ int main() {
       rail3v3Stats.addSample(rail3v3Sample);
       railSupercapStats.addSample(railSupercapSample);
       tempStats.addSample(tempSample);
+
+      railSupercapAvg.update(railSupercapSample);
     }
 
     if (voltageSaveTicker.checkExpired()) {
