@@ -73,7 +73,7 @@ static size_t itoaLimited(char* dst, uint32_t val, size_t len) {
 bool DataloggerFile::newFile(const char* dirname, const char* basename) {
   if (file_ != NULL) {
     debugWarn("File not null\r\n");
-    return false;  // TODO: perhaps assert out?
+    file_ = NULL;
   }
 
   char filename[21];  // 8/8.3 format, disallow LFN (Long Filename)

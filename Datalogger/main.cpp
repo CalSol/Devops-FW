@@ -18,6 +18,7 @@
 #include "Histogram.h"
 #include "MovingAverage.h"
 #include "DmaSerial.h"
+#include "DigitalFilter.h"
 
 #include "datalogger.pb.h"
 #include "RecordEncoding.h"
@@ -55,6 +56,10 @@ BandgapReference AdcBandgap;
 
 // User interface / debugging
 DigitalIn SW1(P0_4, PullUp);
+DigitalFilter Sw1Filter(usTimer, true, 250*1000);
+
+DigitalIn SwReset(P0_21, PullUp);
+DigitalFilter SwResetFilter(usTimer, true, 1000*1000);
 
 DigitalOut LEDR(P0_3);
 DigitalOut LEDG(P0_5);
@@ -270,6 +275,10 @@ bool mountSd(bool wasWdtReset, uint32_t sdInsertedTimestamp,
 }
 
 int main() {
+  // disable the reset pin, to avoid accidental resets from EMI
+  uint32_t* PINENABLE = (uint32_t*)0x400381C4;
+  *PINENABLE = *PINENABLE | (1 << 21);
+
   bool wasWdtReset = wdt.causedReset();
 
   swdConsole.baud(115200);
@@ -330,6 +339,14 @@ int main() {
     wdt.feed();
     timestamp.update();
 
+    // Control reset switch in software to allow agressive filtering
+    if (SwResetFilter.falling(SwReset)) {
+      // enable the reset pin to allow holding the system in reset
+      *PINENABLE = *PINENABLE & ~(1 << 21);
+      NVIC_SystemReset();
+    }
+    bool sw1Pressed = Sw1Filter.falling(SW1);
+
     if (state == kInactive || state == kUnsafeEject) {
       if (!SD_CD
           && railSupercapAvg.read() > kMountThreshold_mV) {  // card inserted
@@ -384,7 +401,7 @@ int main() {
         debugInfo("FSM -> kUnsafeEject: unsafe dismount");
         MainStatusLed.setIdle(RgbActivity::kOff);
         SdStatusLed.setIdle(RgbActivity::kRed);
-      } else if (!SW1) {  // user-requested dismount
+      } else if (sw1Pressed) {  // user-requested dismount
         datalogger.write(generateInfoRecord("User dismount", kSystem, timestamp.read_ms()));
         datalogger.closeFile();
 
