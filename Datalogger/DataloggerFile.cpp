@@ -158,15 +158,27 @@ bool DataloggerFile::syncFile() {
   if (file_ == NULL) {
     return false;  // TODO: perhaps assert out?
   }
-  file_->sync();
+  int result = file_->sync();
+  if (!result) {
+    debugInfo("File sync");
+  } else {
+    debugWarn("File sync failed: %i", result);
+  }
+  return result == 0;
 }
 
 bool DataloggerFile::closeFile() {
   if (file_ == NULL) {
     return false;  // TODO: perhaps assert out?
   }
-  file_->close();
+  int result = file_->close();
+  if (!result) {
+    debugInfo("File close");
+  } else {
+    debugWarn("File close failed: %i", result);
+  }
   file_ = NULL;
+  return result == 0;
 }
 
 struct pb_ostream_cobs_state {

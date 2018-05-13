@@ -270,6 +270,8 @@ bool mountSd(bool wasWdtReset, uint32_t sdInsertedTimestamp,
 
     datalogger.write(generateInfoRecord("FS mounted", kSystem, initTimestamp));
 
+    datalogger.syncFile();
+
     return true;
   } else {
     return false;
