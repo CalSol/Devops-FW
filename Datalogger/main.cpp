@@ -88,7 +88,7 @@ TimerTicker voltageSaveTicker(kVoltageWritePeriod_us, usTimer);
 TimerTicker heartbeatTicker(1000 * 1000, usTimer);
 TimerTicker mpptStatusTicker(200 * 1000, usTimer);
 TimerTicker canCheckTicker(1000 * 1000, usTimer);
-TimerTicker fileSyncTicker(5000 * 1000, usTimer);
+TimerTicker fileSyncTicker(5 * 60 * 1000 * 1000, usTimer);
 TimerTicker remountTicker(250 * 1000, usTimer);
 TimerTicker undismountTicker(10 * 1000 * 1000, usTimer);
 
