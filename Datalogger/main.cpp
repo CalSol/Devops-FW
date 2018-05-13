@@ -19,6 +19,7 @@
 #include "MovingAverage.h"
 #include "DmaSerial.h"
 #include "DigitalFilter.h"
+#include "AnalogThresholdFilter.h"
 
 #include "datalogger.pb.h"
 #include "RecordEncoding.h"
@@ -27,7 +28,7 @@
  * Local peripheral definitions
  */
 // System utilities
-WDT wdt(5000000);  // 5s WDT
+WDT wdt(3000000);  // 3s WDT
 Timer usTimer;
 LongTimer timestamp(usTimer);
 DigitalIn BOD(P0_0);  // Brown-out detect
@@ -40,7 +41,7 @@ SPI spi0(P0_24, P0_26, P0_25);
 I2C i2c(P0_23, P0_22);
 
 DigitalIn SD_CD(P0_15);
-DigitalFilter SdCdFilter(usTimer, true, 250*1000, 25*1000);
+DigitalFilter SdCdFilter(usTimer, true, 250 * 1000, 25 * 1000);
 SDFileSystem sd(P0_13, P0_11, P0_12, P0_14, "sd");
 DataloggerProtoFile datalogger(sd);
 
@@ -54,6 +55,9 @@ AnalogIn ADC3V3V(P0_10);
 AnalogIn ADCSUPERCAPV(P0_2);
 TempSensor AdcTempSensor;
 BandgapReference AdcBandgap;
+
+// thresholds in mV
+AnalogThresholdFilter mountDismountFilter(usTimer, false, 3750, 3500, 25 * 1000, 250 * 1000);
 
 // User interface / debugging
 DigitalIn SW1(P0_4, PullUp);
@@ -79,7 +83,7 @@ RgbActivityBitvector SdStatusLed(usTimer, &statusLedBits,
 DmaSerial<1024> swdConsole(P0_8, NC, 115200);
 
 static uint32_t kVoltageWritePeriod_us = 1000 * 1000;
-TimerTicker voltageSenseTicker(100 * 1000, usTimer);
+TimerTicker voltageSenseTicker(25 * 1000, usTimer);
 TimerTicker voltageSaveTicker(kVoltageWritePeriod_us, usTimer);
 TimerTicker heartbeatTicker(1000 * 1000, usTimer);
 TimerTicker mpptStatusTicker(200 * 1000, usTimer);
@@ -87,9 +91,6 @@ TimerTicker canCheckTicker(1000 * 1000, usTimer);
 TimerTicker fileSyncTicker(5000 * 1000, usTimer);
 TimerTicker remountTicker(250 * 1000, usTimer);
 TimerTicker undismountTicker(10 * 1000 * 1000, usTimer);
-
-const uint16_t kMountThreshold_mV = 3750;
-const uint16_t kDismountThreshold_mV = 3500;
 
 enum SourceId {
   kUnknown = 0,
@@ -315,8 +316,6 @@ int main() {
   // Histogram buckets in us
   Histogram<8, int32_t, uint32_t> loopDistribution({33, 100, 333, 1000, 3333, 10000, 33333, 100000});
 
-  MovingAverage<uint16_t, uint32_t, 8> railSupercapAvg;
-
   DataloggerState state = kInactive;
 
   STATUSLEDS.setDirection(0x00);
@@ -342,7 +341,7 @@ int main() {
 
     if (state == kInactive || state == kUnsafeEject) {
       if (!SdCdFilter.read()
-          && railSupercapAvg.read() > kMountThreshold_mV) {  // card inserted
+          && mountDismountFilter.read()) {  // card inserted
         sdInsertedTimestamp = timestamp.read_ms();
 
         if (mountSd(wasWdtReset, sdInsertedTimestamp, sd, datalogger)) {
@@ -361,13 +360,13 @@ int main() {
           MainStatusLed.setIdle(RgbActivity::kOff);
           SdStatusLed.setIdle(RgbActivity::kRed);
         }
-      } else if (railSupercapAvg.read() <= kMountThreshold_mV) {
+      } else if (!mountDismountFilter.read()) {  // voltage bad
         MainStatusLed.setIdle(RgbActivity::kPurple);
-      } else if (railSupercapAvg.read() > kMountThreshold_mV) {
+      } else if (mountDismountFilter.read()) {  // voltage good, no SD card
         MainStatusLed.setIdle(RgbActivity::kOff);
       }
     } else if (state == kBadCard) {
-      if (SdCdFilter.read() || railSupercapAvg.read() <= kMountThreshold_mV) {  // disk ejected
+      if (SdCdFilter.read() || !mountDismountFilter.read()) {  // disk ejected
         state = kInactive;
         debugInfo("FSM -> kInactive: ejected / undervoltage");
         MainStatusLed.setIdle(RgbActivity::kOff);
@@ -406,7 +405,7 @@ int main() {
         debugInfo("FSM -> kUserDismount: switch pressed");
         MainStatusLed.setIdle(RgbActivity::kBlue);
         SdStatusLed.setIdle(RgbActivity::kBlue);
-      } else if (railSupercapAvg.read() < kDismountThreshold_mV) {  // undervoltage dismount
+      } else if (!mountDismountFilter.read()) {  // undervoltage dismount
         datalogger.write(generateInfoRecord("Undervoltage dismount", kSystem, timestamp.read_ms()));
         datalogger.closeFile();
 
@@ -470,7 +469,7 @@ int main() {
       railSupercapStats.addSample(railSupercapSample);
       tempStats.addSample(tempSample);
 
-      railSupercapAvg.update(railSupercapSample);
+      mountDismountFilter.update(railSupercapSample);
     }
 
     if (voltageSaveTicker.checkExpired()) {
