@@ -6,14 +6,21 @@
 
 class DigitalFilter {
 public:
-  enum Edge {
-    kNone = 0,
+  enum State {
+    kLow = 0,
+    kHigh,
     kRising,
     kFalling
   };
 
   DigitalFilter(Timer& timebase, bool initialValue, uint32_t filterDelayUs) :
-      timebase_(timebase), lastValue_(initialValue), filteredValue_(initialValue), filterDelayUs_(filterDelayUs),
+      timebase_(timebase), lastValue_(initialValue), filteredValue_(initialValue),
+      filterRiseUs_(filterDelayUs), filterFallUs_(filterDelayUs),
+      filterUpdateTime_(0) {
+  }
+  DigitalFilter(Timer& timebase, bool initialValue, uint32_t filterRiseUs, uint32_t filterFallUs) :
+      timebase_(timebase), lastValue_(initialValue), filteredValue_(initialValue),
+      filterRiseUs_(filterRiseUs), filterFallUs_(filterFallUs),
       filterUpdateTime_(0) {
   }
 
@@ -32,35 +39,51 @@ public:
   }
 
   /**
+   * Read the filtered value without updating internal state
+   */
+  bool read() {
+    return filteredValue_;
+  }
+
+  /**
    * Updates the filter with the latest value, returning any detected edges.
    */
-  Edge update(bool dataValue) {
+  State update(bool dataValue) {
     if (dataValue != filteredValue_) {
       if (dataValue == lastValue_) {
         if (LongTimer::timePast(timebase_.read_us(), filterUpdateTime_)) {  // past filter time
           filteredValue_ = dataValue;
           if (dataValue == true) {
-            return Edge::kRising;
+            return State::kRising;
           } else {
-            return Edge::kFalling;
+            return State::kFalling;
           }
         } else {
           // no update needed
         }
       } else {  // first detection of changed data, set filter deadline
         lastValue_ = dataValue;
-        filterUpdateTime_ = timebase_.read_us() + filterDelayUs_;
+        if (dataValue == true) {  // rising edge
+          filterUpdateTime_ = timebase_.read_us() + filterRiseUs_;
+        } else {
+          filterUpdateTime_ = timebase_.read_us() + filterFallUs_;
+        }
       }
     } else {
       // do nothing, current data equivalent to the last filtered value
       lastValue_ = dataValue;  // reset lastValue
     }
-    return Edge::kNone;
+    if (filteredValue_) {
+      return State::kHigh;
+    } else {
+      return State::kLow;
+    }
   }
 
 protected:
   Timer& timebase_;
-  const uint32_t filterDelayUs_;
+  const uint32_t filterRiseUs_;
+  const uint32_t filterFallUs_;
 
   uint32_t filterUpdateTime_;  // time at which filteredValue becomes lastValue (if different)
   bool lastValue_;  // last observed value

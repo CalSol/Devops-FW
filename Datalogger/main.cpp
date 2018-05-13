@@ -40,6 +40,7 @@ SPI spi0(P0_24, P0_26, P0_25);
 I2C i2c(P0_23, P0_22);
 
 DigitalIn SD_CD(P0_15);
+DigitalFilter SdCdFilter(usTimer, true, 250*1000, 25*1000);
 SDFileSystem sd(P0_13, P0_11, P0_12, P0_14, "sd");
 DataloggerProtoFile datalogger(sd);
 
@@ -85,6 +86,7 @@ TimerTicker mpptStatusTicker(200 * 1000, usTimer);
 TimerTicker canCheckTicker(1000 * 1000, usTimer);
 TimerTicker fileSyncTicker(5000 * 1000, usTimer);
 TimerTicker remountTicker(250 * 1000, usTimer);
+TimerTicker undismountTicker(10 * 1000 * 1000, usTimer);
 
 const uint16_t kMountThreshold_mV = 3750;
 const uint16_t kDismountThreshold_mV = 3500;
@@ -329,16 +331,17 @@ int main() {
     wdt.feed();
     timestamp.update();
 
-    // Control reset switch in software to allow agressive filtering
+    // Control reset switch in software to allow aggressive filtering
     if (SwResetFilter.falling(SwReset)) {
       // enable the reset pin to allow holding the system in reset
       *PINENABLE = *PINENABLE & ~(1 << 21);
       NVIC_SystemReset();
     }
     bool sw1Pressed = Sw1Filter.falling(SW1);
+    SdCdFilter.update(SD_CD);
 
     if (state == kInactive || state == kUnsafeEject) {
-      if (!SD_CD
+      if (!SdCdFilter.read()
           && railSupercapAvg.read() > kMountThreshold_mV) {  // card inserted
         sdInsertedTimestamp = timestamp.read_ms();
 
@@ -364,7 +367,7 @@ int main() {
         MainStatusLed.setIdle(RgbActivity::kOff);
       }
     } else if (state == kBadCard) {
-      if (SD_CD || railSupercapAvg.read() <= kMountThreshold_mV) {  // disk ejected
+      if (SdCdFilter.read() || railSupercapAvg.read() <= kMountThreshold_mV) {  // disk ejected
         state = kInactive;
         debugInfo("FSM -> kInactive: ejected / undervoltage");
         MainStatusLed.setIdle(RgbActivity::kOff);
@@ -386,7 +389,9 @@ int main() {
         }
       }
     } else if (state == kActive) {
-      if (SD_CD) {  // unsafe dismount
+      if (SdCdFilter.read()) {  // unsafe dismount
+        datalogger.closeFile();
+
         state = kUnsafeEject;
         debugInfo("FSM -> kUnsafeEject: unsafe dismount");
         MainStatusLed.setIdle(RgbActivity::kOff);
@@ -394,6 +399,8 @@ int main() {
       } else if (sw1Pressed) {  // user-requested dismount
         datalogger.write(generateInfoRecord("User dismount", kSystem, timestamp.read_ms()));
         datalogger.closeFile();
+
+        undismountTicker.reset();
 
         state = kUserDismount;
         debugInfo("FSM -> kUserDismount: switch pressed");
@@ -409,9 +416,14 @@ int main() {
         SdStatusLed.setIdle(RgbActivity::kBlue);
       }
     } else if (state == kUserDismount) {
-      if (SD_CD) {  // disk ejected
+      if (SdCdFilter.read()) {  // disk ejected
         state = kInactive;
         debugInfo("FSM -> kInactive: ejected");
+        MainStatusLed.setIdle(RgbActivity::kOff);
+        SdStatusLed.setIdle(RgbActivity::kOff);
+      } else if (undismountTicker.checkExpired()) {
+        state = kInactive;
+        debugInfo("FSM -> kInactive: dismount timeout");
         MainStatusLed.setIdle(RgbActivity::kOff);
         SdStatusLed.setIdle(RgbActivity::kOff);
       }
@@ -506,6 +518,7 @@ int main() {
         MainStatusLed.pulse(RgbActivity::kGreen);
       }
     }
+
     if (mpptStatusTicker.checkExpired()) {
       CANMessage msg(CAN_FRONT_RIGHT_MPPT_STATUS, NULL, 0, CANRemote);
       canBuffer.write(msg);
