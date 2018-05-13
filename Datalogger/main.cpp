@@ -77,15 +77,14 @@ RgbActivityBitvector SdStatusLed(usTimer, &statusLedBits,
 // RawSerial uart(P0_28, P0_29);  // currently unused
 DmaSerial<1024> swdConsole(P0_8, NC, 115200);
 
-const uint32_t kStatusBlinkPeriod_us = 1000 * 1000;
-const uint32_t kCanCheckPeriod_us = 1000 * 1000;
-const uint32_t kVoltageSensePeriod_us = 100 * 1000;
-const uint32_t kVoltageWritePeriod_us = 1000 * 1000;
-const uint32_t kHeartbeatPeriod_us = 1000 * 1000;
-const uint32_t kMpptStatusPeriod_us = 200 * 1000;
-const uint32_t kFileSyncPeriod_us = 5000 * 1000;
-
-const uint32_t kRemountPeriod_us = 250 * 1000;
+static uint32_t kVoltageWritePeriod_us = 1000 * 1000;
+TimerTicker voltageSenseTicker(100 * 1000, usTimer);
+TimerTicker voltageSaveTicker(kVoltageWritePeriod_us, usTimer);
+TimerTicker heartbeatTicker(1000 * 1000, usTimer);
+TimerTicker mpptStatusTicker(200 * 1000, usTimer);
+TimerTicker canCheckTicker(1000 * 1000, usTimer);
+TimerTicker fileSyncTicker(5000 * 1000, usTimer);
+TimerTicker remountTicker(250 * 1000, usTimer);
 
 const uint16_t kMountThreshold_mV = 3750;
 const uint16_t kDismountThreshold_mV = 3500;
@@ -301,15 +300,6 @@ int main() {
       time.tm_year + 1900, time.tm_mon + 1, time.tm_mday,
       time.tm_hour, time.tm_min, time.tm_sec);
 
-  TimerTicker statusIndicatorTicker(kHeartbeatPeriod_us, usTimer);
-  TimerTicker voltageSenseTicker(kVoltageSensePeriod_us, usTimer);
-  TimerTicker voltageSaveTicker(kVoltageWritePeriod_us, usTimer);
-  TimerTicker heartbeatTicker(kHeartbeatPeriod_us, usTimer);
-  TimerTicker mpptStatusTicker(kMpptStatusPeriod_us, usTimer);
-  TimerTicker canCheckTicker(kCanCheckPeriod_us, usTimer);
-  TimerTicker fileSyncTicker(kFileSyncPeriod_us, usTimer);
-
-  TimerTicker remountTicker(kRemountPeriod_us, usTimer);
   uint32_t numMountAttempts = 0;
   uint32_t sdInsertedTimestamp;
 
@@ -430,13 +420,6 @@ int main() {
       debugWarn("FSM -> kInactive: fallback condition");
     }
 
-    if (statusIndicatorTicker.checkExpired()) {
-      if (state == kInactive) {
-        MainStatusLed.pulse(RgbActivity::kRed);
-      } else if (state == kActive) {
-        MainStatusLed.pulse(RgbActivity::kGreen);
-      }
-    }
     if (state == kUnsafeEject || state == kBadCard) {
       MainStatusLed.pulse(RgbActivity::kRed);
     }
@@ -516,6 +499,12 @@ int main() {
 
     if (heartbeatTicker.checkExpired()) {
       canBuffer.write(makeMessage(CAN_HEART_DATALOGGER, timestamp.read_short_us()));
+
+      if (state == kInactive) {
+        MainStatusLed.pulse(RgbActivity::kRed);
+      } else if (state == kActive) {
+        MainStatusLed.pulse(RgbActivity::kGreen);
+      }
     }
     if (mpptStatusTicker.checkExpired()) {
       CANMessage msg(CAN_FRONT_RIGHT_MPPT_STATUS, NULL, 0, CANRemote);
