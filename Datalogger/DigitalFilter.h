@@ -25,20 +25,6 @@ public:
   }
 
   /**
-   * Updates the filter with the latest value, and returns true if there is a rising edge.
-   */
-  bool rising(bool dataValue) {
-    return update(dataValue) == kRising;
-  }
-
-  /**
-   * Updates the filter with the latest value, and returns true if there is a falling edge.
-   */
-  bool falling(bool dataValue) {
-    return update(dataValue) == kFalling;
-  }
-
-  /**
    * Read the filtered value without updating internal state
    */
   bool read() {

@@ -333,12 +333,12 @@ int main() {
     timestamp.update();
 
     // Control reset switch in software to allow aggressive filtering
-    if (SwResetFilter.falling(SwReset)) {
+    if (SwResetFilter.update(SwReset) == DigitalFilter::kFalling) {
       // enable the reset pin to allow holding the system in reset
       *PINENABLE = *PINENABLE & ~(1 << 21);
       NVIC_SystemReset();
     }
-    bool sw1Pressed = Sw1Filter.falling(SW1);
+    bool sw1Pressed = Sw1Filter.update(SW1) == DigitalFilter::kFalling;
     SdCdFilter.update(SD_CD);
 
     if (state == kInactive || state == kUnsafeEject) {

@@ -31,14 +31,15 @@ public:
   }
 
   /**
-   * Read the filtered value without updating internal state
+   * Read the filtered value without updating internal state.
    */
   bool read() {
     return filteredValue_;
   }
 
   /**
-   * Updates the filter with the latest value, returning any detected edges.
+   * Updates the filter with the latest value, returning the current state.
+   * The filter exhibits hysteresis if the thresholds are appropriately specified.
    */
   State update(uint32_t dataValue) {
     if ((dataValue >= risingThreshold_ && filteredValue_ == false)
