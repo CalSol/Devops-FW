@@ -24,7 +24,7 @@ Platform-specific directions are below.
 1.  Add the OpenOCD scripts directory to your system `OPENOCD_SCRIPTS`, allowing you to run OpenOCD from anywhere without needing to explicitly specify the scripts directory location. This is typically in `/usr/share/openocd/scripts`, and should contain the file `interface/cmsis-dap.cfg`.
     
 #### For Windows
-1.  [Install GCC-ARM](https://launchpad.net/gcc-arm-embedded).
+1.  [Install GCC-ARM](https://developer.arm.com/open-source/gnu-toolchain/gnu-rm/downloads).
     - At the end of the installation, make sure to check "Add path to environment variable" so it can be run from anywhere.
 1.  [Install SCons](http://scons.org/pages/download.html).
     - You will need to install [Python 2.7, 32-bit](https://www.python.org/downloads/) if you do not have it already (as of SCons 2.5.0, there is no Python3 support yet and the installer will not detect 64-bit Python versions).
