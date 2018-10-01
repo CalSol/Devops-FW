@@ -26,12 +26,12 @@ Platform-specific directions are below.
 #### For Windows
 1.  [Install GCC-ARM](https://developer.arm.com/open-source/gnu-toolchain/gnu-rm/downloads).
     - At the end of the installation, make sure to check "Add path to environment variable" so it can be run from anywhere.
-1.  [Install SCons](http://scons.org/pages/download.html).
-    - You will need to install [Python 2.7, 32-bit](https://www.python.org/downloads/) if you do not have it already (as of SCons 2.5.0, there is no Python3 support yet and the installer will not detect 64-bit Python versions).
-    - Make sure to add SCons to your system PATH. By default, SCons will be installed in the `Scripts` folder under your Python 2.7 directory.
+1.  Install SCons using pip. On the command line, run `pip install scons`.
+    - `pip` should be included with your Python install. [Download and install Python](https://www.python.org/downloads/) if you do not have it already. SCons3 is compatible with either Python2 or 3.
 1.  [Install OpenOCD using the unofficial installer](https://github.com/gnuarmeclipse/openocd/releases). There are no official binaries without requiring additional environments like MSYS.
     - If you want to run OpenOCD from the command line, add the OpenOCD binary directory to your system `PATH`. The default is `C:\Program Files\GNU ARM Eclipse\OpenOCD\(version)\bin`.
 1.  Add the OpenOCD scripts directory to your system `OPENOCD_SCRIPTS`, allowing you to run OpenOCD from anywhere without needing to explicitly specify the scripts directory location. This is typically in `C:\Program Files\GNU ARM Eclipse\OpenOCD\(version)\scripts`, and should contain the file `interface/cmsis-dap.cfg`.
+    - On Windows 10, you can add environment variables by going to the start ment, then "Edit the system environment variables", which brings up the System Properties dialog. Click the "Environment Variables..." button to bring up the Environment Variables dialog. Under "System variables", either edit or add (with "New...") `OPENOCD_SCRIPTS`.
 1.  On Windows 8 and later, the [CDC Driver](https://github.com/x893/CMSIS-DAP/blob/master/Firmware/STM32/CMSIS_DAP.inf) for the CMSIS-DAP dongles may solve an issue with the dongles becoming non-responsive after a few seconds.
 
 #### For Mac
@@ -52,11 +52,17 @@ _Note:_ This repository uses Git submodules as a way to bring in external depend
 ### GUI option
 _GitHub Desktop is only available for Windows and Mac. GitHub Desktop handles most submodule operations for you, cloning submoduled repositories and updating submodule pointers during a sync operation._
 
+**GitHub Desktop is recommended if you are new to git. It provides a graphical user interface to most common git functionality.**
+
 1. Download and install [GitHub Desktop](https://desktop.github.com/).
 1. Clone this repository to desktop using the "Clone or download" button on the web interface. It should automatically launch GitHub Desktop.
 1. In the GitHub Desktop interface, you can sync the repository (push new changes to GitHub if you have the appropriate permissions, as well as pull updates from GitHub) using the "Sync" button.
 
 ### Command-line option
+_Command-line git is more powerful but also has a steep learning curve. The following is provided mainly as a reference._
+
+**If you don't already know command-line git or have a compelling reason to learn it (eg classes), consider using GitHub Desktop above.**
+
 1.  Ensure command-line git is installed.
     - On Debian-based systems (including Ubuntu), this is available as a package.
 
@@ -151,7 +157,60 @@ _If your natural habitat is in front of a text terminal rather than a GUI, you c
     - `scons -c` will clean all built targets. Or, if you prefer to be sure by nuking it from orbit, delete the `build/` directory.
     - You can build specific files (or directories) with `scons <your/target/here>`.
 
+#### Flashing with OpenOCD and CMSIS-DAP dongles via SCons
+_SCons has build targets that invoke OpenOCD to flash hardware. These will automatically (re)compile all dependencies as needed._
+
+1.  You can see a list of all top-level build targets using:
+
+    ```
+    scons --list
+    ```
+    
+    This includes both the binary targets (like `datalogger`) as well as the flash targets (like `flash-datalogger`)
+1.  "Build" the flash target:
+
+    ```
+    scons flash-<target>
+    ```
+    
+    (replacing `target` with the name of target - so you'd run something like `scons flash-datalogger`)
+    - If all worked well, you should see something ending with:
+    
+      ```
+      ** Programming Started **
+      auto erase enabled
+      Warn : Verification will fail since checksum in image (0x00000000) to be written to flash is different from calculated vector checksum (0xfdff47b6).
+      Warn : To remove this warning modify build tools on developer PC to inject correct LPC vector checksum.
+      wrote 8192 bytes from file build/datalogger.elf in 1.080895s (7.401 KiB/s)
+      ** Programming Finished **
+      scons: done building targets.
+      ```
+      
+    - If the CMSIS-DAP dongle isn't connected to your computer, you would see an error like:
+
+      ```
+      Error: unable to find CMSIS-DAP device
+      Error: No Valid JTAG Interface Configured.
+      scons: *** [build\flash-datalogger] Error -1
+      scons: building terminated because of errors.
+      ```
+
+    - If the target board isn't connected, you might see an error like:
+
+      ```
+      in procedure 'program'
+      in procedure 'init' called at file "embedded:startup.tcl", line 495
+      in procedure 'ocd_bouncer'
+      ** OpenOCD init failed **
+      shutdown command invoked
+      
+      scons: *** [build\flash-datalogger] Error -1
+      scons: building terminated because of errors.
+      ```
+    
 #### Flashing with OpenOCD and CMSIS-DAP dongles
+_This section is keps as a reference only, as to what the SCons flash targets do under the hood. You should use the SCons flash targets from the above section._
+
 1.  Ensure the built binaries (`.bin` files) are up to date by invoking `scons`.
 1.  Do a sanity check by launching OpenOCD with the interface and target configuration:
 
@@ -161,7 +220,7 @@ _If your natural habitat is in front of a text terminal rather than a GUI, you c
       -f <your-target-config.cfg>
     ```
 
-    For target config files, see [OpenOCD Target Configurations](#openocd-target-configurations).
+    Reaplce `<your-target-config.cfg>` with the appropriate target file. See [OpenOCD Target Configurations](#openocd-target-configurations).
 
     - If all worked well, you should see something ending with:
 
@@ -173,19 +232,7 @@ _If your natural habitat is in front of a text terminal rather than a GUI, you c
       ```
 
       Obviously, this may vary depending on the particular chip target. At this point, OpenOCD continues running (as a server) in the foreground, waiting for interactive commands from socket connections.
-    - If the CMSIS-DAP dongle isn't connected to your computer, you would see an error like:
-
-      ```
-      Error: unable to find CMSIS-DAP device
-      ```
-
-    - If the target board isn't connected, you might see an error like:
-
-      ```
-      Info : clock speed 480 kHz
-      in procedure 'init'
-      in procedure 'ocd_bouncer'
-      ```
+    - See the flashing with SCons section for potential error messages.
 
 1.  Without closing the running OpenOCD server, open a telnet connection to localhost:4444, the OpenOCD console.
     1.  In the OpenOCD console, run these commands:
