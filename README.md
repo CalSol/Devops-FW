@@ -44,7 +44,7 @@ Platform-specific directions are below.
       pip install -U wheel
       ```
 
-1.  [Install OpenOCD using the unofficial installer](https://github.com/gnuarmeclipse/openocd/releases). There are no official binaries without requiring additional environments like MSYS.
+1.  [Install OpenOCD v0.10.0-5-20171110 using the unofficial .exe installer](https://github.com/gnu-mcu-eclipse/openocd/releases/tag/v0.10.0-5-20171110). There are no official binaries without requiring additional environments like MSYS.
     - If you want to run OpenOCD from the command line, add the OpenOCD binary directory to your system `PATH`. The default is `C:\Program Files\GNU ARM Eclipse\OpenOCD\(version)\bin`.
 1.  Add the OpenOCD scripts directory to your system `OPENOCD_SCRIPTS`, allowing you to run OpenOCD from anywhere without needing to explicitly specify the scripts directory location. This is typically in `C:\Program Files\GNU ARM Eclipse\OpenOCD\(version)\scripts`, and should contain the file `interface/cmsis-dap.cfg`.
     - On Windows 10, you can add environment variables by going to the start ment, then "Edit the system environment variables", which brings up the System Properties dialog. Click the "Environment Variables..." button to bring up the Environment Variables dialog. Under "System variables", either edit or add (with "New...") `OPENOCD_SCRIPTS`.
