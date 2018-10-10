@@ -18,17 +18,33 @@ Platform-specific directions are below.
       ```
 1.  Install everything else:
     ```
+    sudo apt-get install git
     sudo apt-get install scons
     sudo apt-get install openocd
     ```
 1.  Add the OpenOCD scripts directory to your system `OPENOCD_SCRIPTS`, allowing you to run OpenOCD from anywhere without needing to explicitly specify the scripts directory location. This is typically in `/usr/share/openocd/scripts`, and should contain the file `interface/cmsis-dap.cfg`.
     
 #### For Windows
+1.  [Install command-line git](https://git-scm.com/download/win).
+      - At the end of the installation, check "Use Git from the Windows Command Prompt" if you want to run Git from outside the Git Bash command prompt.
+      - Whether you use command-line git, GitHub desktop, or some other interface (more details below), this is still required for the build system to sanity check submodule status.
 1.  [Install GCC-ARM](https://developer.arm.com/open-source/gnu-toolchain/gnu-rm/downloads).
     - At the end of the installation, make sure to check "Add path to environment variable" so it can be run from anywhere.
-1.  Install SCons using pip. On the command line, run `pip install scons`.
+1.  Install SCons using pip. On the command line, run:
+
+    ```
+    pip install scons
+    ```
+
     - `pip` should be included with your Python install. [Download and install Python](https://www.python.org/downloads/) if you do not have it already. SCons3 is compatible with either Python2 or 3.
-1.  [Install OpenOCD using the unofficial installer](https://github.com/gnuarmeclipse/openocd/releases). There are no official binaries without requiring additional environments like MSYS.
+    - If you get the error `option --single-version-externally-managed not recognized`, you need to install or upgrade some Python packages. On the command line, run:
+
+      ```
+      pip install -U setuptools
+      pip install -U wheel
+      ```
+
+1.  [Install OpenOCD v0.10.0-5-20171110 using the unofficial .exe installer](https://github.com/gnu-mcu-eclipse/openocd/releases/tag/v0.10.0-5-20171110). There are no official binaries without requiring additional environments like MSYS.
     - If you want to run OpenOCD from the command line, add the OpenOCD binary directory to your system `PATH`. The default is `C:\Program Files\GNU ARM Eclipse\OpenOCD\(version)\bin`.
 1.  Add the OpenOCD scripts directory to your system `OPENOCD_SCRIPTS`, allowing you to run OpenOCD from anywhere without needing to explicitly specify the scripts directory location. This is typically in `C:\Program Files\GNU ARM Eclipse\OpenOCD\(version)\scripts`, and should contain the file `interface/cmsis-dap.cfg`.
     - On Windows 10, you can add environment variables by going to the start ment, then "Edit the system environment variables", which brings up the System Properties dialog. Click the "Environment Variables..." button to bring up the Environment Variables dialog. Under "System variables", either edit or add (with "New...") `OPENOCD_SCRIPTS`.
@@ -63,15 +79,7 @@ _Command-line git is more powerful but also has a steep learning curve. The foll
 
 **If you don't already know command-line git or have a compelling reason to learn it (eg classes), consider using GitHub Desktop above.**
 
-1.  Ensure command-line git is installed.
-    - On Debian-based systems (including Ubuntu), this is available as a package.
-
-      ```
-      sudo apt-get install git
-      ```
-
-    - On Windows, [download and run this installer](https://git-scm.com/download/win).
-      - At the end of the installation, check "Use Git from the Windows Command Prompt" if you want to run Git from outside the Git Bash command prompt.
+1.  Command-line git should have been installed during the toolchain setup above.
 1.  Clone (download a copy of) the repository:
 
     ```
