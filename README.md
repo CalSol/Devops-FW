@@ -98,9 +98,9 @@ _Command-line git is more powerful but also has a steep learning curve._
 1.  Using `git` effectively has a learning curve, but as Git is everywhere now, it's worth learning. Make sure you're familiar with Git commands like `commit`, `pull`, `push`, `merge`, `rebase`, and `cherry-pick`.
 
 ## Development
-_There are two options for code development: using an IDE or a text editor and command line. 
+There are two options for code development: using an IDE or a text editor and command line. 
 - An IDE (Eclispe, IntelliJ, PyCharm, VSCode, NetBeans) gives an integrated way to code, program, and debug firmware. It requires more setup, but once done it's convinient and very powerful. 
-- Using a text editor (Sublime, Atom, vim, emacs, Notepad++) and command line is a more bare-bones way to code. There's no additional setup, but it's a little harder to learn. See the [command-line operations section](#command-line-operations)._
+- Using a text editor (Sublime, Atom, vim, emacs, Notepad++) and command line is a more bare-bones way to code. There's no additional setup, but it's a little harder to learn. See the [command-line operations section](#command-line-operations).
 
 ### IDE Setup
 _This section is optional, for people who want to work with an IDE and GUI debug tools._
