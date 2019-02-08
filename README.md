@@ -68,16 +68,16 @@ _Note:_ This repository uses Git submodules as a way to bring in external depend
 ### GUI option
 _GitHub Desktop is only available for Windows and Mac. GitHub Desktop handles most submodule operations for you, cloning submoduled repositories and updating submodule pointers during a sync operation._
 
-**GitHub Desktop is recommended if you are new to git. It provides a graphical user interface to most common git functionality.**
+**GitHub Desktop provides a graphical user interface to most common git functionality, and is recommended if you're new to coding.**
 
 1. Download and install [GitHub Desktop](https://desktop.github.com/).
 1. Clone this repository to desktop using the "Clone or download" button on the web interface. It should automatically launch GitHub Desktop.
 1. In the GitHub Desktop interface, you can sync the repository (push new changes to GitHub if you have the appropriate permissions, as well as pull updates from GitHub) using the "Sync" button.
 
 ### Command-line option
-_Command-line git is more powerful but also has a steep learning curve. The following is provided mainly as a reference._
+_Command-line git is more powerful but also has a steep learning curve._
 
-**If you don't already know command-line git or have a compelling reason to learn it (eg classes), consider using GitHub Desktop above.**
+**You'll be using git in nearly all CS/EE classes. Although it's harder to learn, you're going to have to eventually :)**
 
 1.  Command-line git should have been installed during the toolchain setup above.
 1.  Clone (download a copy of) the repository:
@@ -98,10 +98,14 @@ _Command-line git is more powerful but also has a steep learning curve. The foll
 1.  Using `git` effectively has a learning curve, but as Git is everywhere now, it's worth learning. Make sure you're familiar with Git commands like `commit`, `pull`, `push`, `merge`, `rebase`, and `cherry-pick`.
 
 ## Development
-### Installing Eclipse
-_This section is optional, for people who want to work with an IDE and GUI debug tools. This is recommended for beginners, as it provides a low learning curve and integrated way to code, program, and debug firmware. For the masochists among us that love vim/emacs and command-line GDB, see the [command-line operations section](#command-line-operations)._
+_There are two options for code development: using an IDE or a text editor and command line. 
+- An IDE (Eclispe, IntelliJ, PyCharm, VSCode, NetBeans) gives an integrated way to code, program, and debug firmware. It requires more setup, but once done it's convinient and very powerful. 
+- Using a text editor (Sublime, Atom, vim, emacs, Notepad++) and command line is a more bare-bones way to code. There's no additional setup, but it's a little harder to learn. See the [command-line operations section](#command-line-operations)._
 
-#### Initial setup
+### IDE Setup
+_This section is optional, for people who want to work with an IDE and GUI debug tools._
+
+#### Installing Eclipse and add-ons 
 1.  [Download Eclipse](https://www.eclipse.org/downloads/). Eclipse IDE for C/C++ developers is a good option.
 1.  Install some Eclipse plugins:
     - (menu) > Help > Install New Software..., then enter the update site URL in the "Work with..." field.
@@ -153,7 +157,7 @@ _This section is optional, for people who want to work with an IDE and GUI debug
     - Make sure to terminate a debugging session when done. Eclipse does not allow multiple concurrent debug sessions.
 
 ### Command-Line Operations
-_If your natural habitat is in front of a text terminal rather than a GUI, you can also flash and debug the microcontroller using command-line OpenOCD._
+_You can also flash and debug the microcontroller using command-line OpenOCD._
 #### Building with SCons
 1.  Invoke SCons in the `Tachyon-FW` folder to build all the targets.
 
