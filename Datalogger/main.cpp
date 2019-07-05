@@ -521,13 +521,13 @@ int main() {
     }
 
     if (mpptStatusTicker.checkExpired()) {
-      CANMessage msg(CAN_FRONT_RIGHT_MPPT_STATUS, NULL, 0, CANRemote);
+      CANMessage msg(CAN_MODULE_A_MPPT_STATUS, NULL, 0, CANRemote);
       canBuffer.write(msg);
-      msg.id = CAN_FRONT_LEFT_MPPT_STATUS;
+      msg.id = CAN_MODULE_B_MPPT_STATUS;
       canBuffer.write(msg);
-      msg.id = CAN_BACK_RIGHT_MPPT_STATUS;
+      msg.id = CAN_MODULE_C_MPPT_STATUS;
       canBuffer.write(msg);
-      msg.id = CAN_BACK_LEFT_MPPT_STATUS;
+      msg.id = CAN_MODULE_D_MPPT_STATUS;
       canBuffer.write(msg);
     }
 
