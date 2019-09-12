@@ -1,14 +1,16 @@
 # Tachyon
-Microcontroller code for Tachyon
+This repository contains the microcontroller code for Tachyon
 
 ## Setup
 ### Toolchain installation
+
+#### Please read below
 You will install these components of the build system here:
 - [GCC-ARM](https://launchpad.net/gcc-arm-embedded), the compiler targeting the embedded microcontroller.
 - [SCons](http://scons.org/), the build system.
 - [OpenOCD](http://openocd.org/), a program that interfaces with the debug link. 
 
-Platform-specific directions are below.
+#### Platform-specific directions are below. Skip to your platform.
 
 #### For Debian-based Linux
 1.  Install the [GCC-ARM PPA by following these instructions](https://launchpad.net/~team-gcc-arm-embedded/+archive/ubuntu/ppa). Note: the one included by default in the system package manager may not work.
@@ -61,20 +63,17 @@ Platform-specific directions are below.
   
     brew install openocd
     ```
+1.  Install command line git
+    ```
+    brew install git
+    ```
   
 ## Repository Checkout
+
+#### Please read the entire section below
 _Note:_ This repository uses Git submodules as a way to bring in external dependencies (like the mbed library) while both tracking the version used and allowing easier updates. Other than the initial clone and updates described below, it is unlikely you will need to significantly interact with the submodule system for routine development. However, there is plenty of documentation on submodules available on the Internet for those who wish to know more.
 
-### GUI option
-_GitHub Desktop is only available for Windows and Mac. GitHub Desktop handles most submodule operations for you, cloning submoduled repositories and updating submodule pointers during a sync operation._
-
-**GitHub Desktop provides a graphical user interface to most common git functionality, and is recommended if you're new to coding.**
-
-1. Download and install [GitHub Desktop](https://desktop.github.com/).
-1. Clone this repository to desktop using the "Clone or download" button on the web interface. It should automatically launch GitHub Desktop.
-1. In the GitHub Desktop interface, you can sync the repository (push new changes to GitHub if you have the appropriate permissions, as well as pull updates from GitHub) using the "Sync" button.
-
-### Command-line option
+### Command-line git
 _Command-line git is more powerful but also has a steep learning curve._
 
 **You'll be using git in nearly all CS/EE classes. Although it's harder to learn, you're going to have to eventually :)**
@@ -86,7 +85,10 @@ _Command-line git is more powerful but also has a steep learning curve._
     git clone --recursive https://github.com/CalSol/Tachyon-FW.git
     ```
 
+In general the link to the repository can be found on the GitHub website for that repository.
+
 1.  To pull new remote updates into your local repository from GitHub:
+_`--init`_ should only be used to _initialize_ the repository submodules
 
     ```
     git pull
@@ -98,67 +100,21 @@ _Command-line git is more powerful but also has a steep learning curve._
 1.  Using `git` effectively has a learning curve, but as Git is everywhere now, it's worth learning. Make sure you're familiar with Git commands like `commit`, `pull`, `push`, `merge`, `rebase`, and `cherry-pick`.
 
 ## Development
-There are two options for code development: using an IDE or a text editor and command line. 
-- An IDE (Eclispe, IntelliJ, PyCharm, VSCode, NetBeans) gives an integrated way to code, program, and debug firmware. It requires more setup, but once done it's convinient and very powerful. 
+There are two options for code development: using an IDE or a text editor and command line. _We recommend a text editor because configuring Eclipse is difficult_
 - Using a text editor (Sublime, Atom, vim, emacs, Notepad++) and command line is a more bare-bones way to code. There's no additional setup, but it's a little harder to learn. See the [command-line operations section](#command-line-operations).
+- An IDE (Eclispe, IntelliJ, PyCharm, VSCode, NetBeans) gives an integrated way to code, program, and debug firmware. It requires more setup, but once done it's convinient and very powerful. _The instructions on setup will be at the bottom of the README_
 
-### IDE Setup
-_This section is optional, for people who want to work with an IDE and GUI debug tools._
-
-#### Installing Eclipse and add-ons 
-1.  [Download Eclipse](https://www.eclipse.org/downloads/). Eclipse IDE for C/C++ developers is a good option.
-1.  Install some Eclipse plugins:
-    - (menu) > Help > Install New Software..., then enter the update site URL in the "Work with..." field.
-    - If some components cannot be installed, you may need to update your version of Eclipse.
-    1. Install [SConsolidator](http://www.sconsolidator.com/) (update site: <http://www.sconsolidator.com/update>), which allows some integration of SCons scripts.
-    1. Install [GNU ARM on Eclipse](https://gnuarmeclipse.github.io) (update site: <http://gnuarmeclipse.sourceforge.net/updates>), which provides Eclipse program and debug integration.
-1.  Define where the OpenOCD binary can be found:
-    - (menu) > Preferences > Run/Debug > OpenOCD, set the Folder to the folder where the OpenOCD binary is located.
-
-#### Project configuration
-1.  Add this repository as a Eclipse project:
-    - (menu) > New > Project > New SCons project from existing source. Under Existing Code Location, choose the folder where you checked out this repository.
-1.  Configure the indexer to include the proper system headers for this project:
-    - Right click the project and open the Properties window, then under C/C++ General > Paths and Symbols, in the Includes tab, for both GNU C and GNU C++ languages, add the GNU ARM includes directory:
-      - Under Debian-based systems, the path is `/usr/lib/gcc/arm-none-eabi/(version)/include`.
-      - Under Windows, the default is `C:\Program Files (x86)\GNU Tools ARM Embedded\(version)\arm-none-eabi\include`.
-1.  Build the project.
-    - In the Project Explorer, right-click the Tachyon-FW project and click Build.
-    - If the build succeeded, this should create all the `.elf` files (compiled firmware) in the `build/` directory.
-    - PROTIP: you can also start a build with Ctrl+B.
-1.  Set up a debug configuration. Right-click the `.elf` file and select Debug As > Debug Configurations...
-    1.  From the list on the left side of the new window, right click GDB OpenOCD Debugging and select New.
-    1.  Under the Main tab:
-        - Give the configuration a name.
-        - Ensure the Project field matches the project name.
-        - Set the C/C++ Application to the path to the `.elf` file, like `build/oled2.elf`.
-        - If you want to auto-build before launching, set it in Build (if required) before launching, either for this debug target only, or by modifying the workspace-wide setting.
-    1.  Under the Debugging tab:
-        - Leave the default OpenOCD Setup > Executable configuration of `${openocd_path}/${openocd_executable}`.
-        - Set the GDB Client Setup > Executable to `arm-none-eabi-gdb`.
-        - Set the Config Options to include flags for interface / target configuration (`-f`), and startup commands (`-c`):
-
-          ```
-          -f interface/cmsis-dap.cfg
-          -f target/<your-target-config.cfg>
-          -c init
-          -c "reset halt"
-          ```
-
-          For target config files, see [OpenOCD Target Configurations](#openocd-target-configurations).
-
-    1.  Under the Startup tab:
-        - In Run/Restart Commands, if you want the target to start running immediately after flashing completes, disable the Set breakpoint at: option.
-    1.  Under the Common tab:
-        - If you want to launch this target from the quickbar, check the options in Display in favorites menu.
-1.  Try launching the debug target. This will flash the microcontroller and start it.
-    - If all goes well, you should be able to pause the target (and Eclipse should bring up the next line of code the microcontroller will execute). The normal debugging tools are available: step-into, step-over, step-out, breakpoints, register view, memory view, and more.
-    - PROTIP: you can launch the last debug target with Ctrl+F11.
-    - Make sure to terminate a debugging session when done. Eclipse does not allow multiple concurrent debug sessions.
+#### As far as text editors are concerned everyone has there own preference, but typically people use the ones listed above. If you don't have one set up already ask a returning member.
 
 ### Command-Line Operations
 _You can also flash and debug the microcontroller using command-line OpenOCD._
+
+In embedded programming there are two stages, building and flashing.
+1. Building converts the code files (.cpp and .h files for us) to binary files (usually one of .bin or .elf)
+2. Flashing uploads those binary files to the program memory of the microcontroller, so that later it can perform the operations.
+
 #### Building with SCons
+
 1.  Invoke SCons in the `Tachyon-FW` folder to build all the targets.
 
     ```
@@ -168,8 +124,18 @@ _You can also flash and debug the microcontroller using command-line OpenOCD._
     This places the build binaries (.elf and .bin files) in `build/`. SCons has built-in dependency tracking so it does a minimal incremental build.
     - `scons -c` will clean all built targets. Or, if you prefer to be sure by nuking it from orbit, delete the `build/` directory.
     - You can build specific files (or directories) with `scons <your/target/here>`.
+2.   Build a specific target from within the 'Tachyon-FW' folder.
 
-#### Flashing with OpenOCD and CMSIS-DAP dongles via SCons
+    ```
+    scons <target>
+    ```
+
+`<target>` is the name of the build targe (i.e. `scons BMS`)
+
+#### Flashing via SCons (with OpenOCD and CMSIS-DAP dongles)
+
+##### Please read below to understand how to program our microcontrollers.
+
 _SCons has build targets that invoke OpenOCD to flash hardware. These will automatically (re)compile all dependencies as needed._
 
 1.  You can see a list of all top-level build targets using:
@@ -220,8 +186,10 @@ _SCons has build targets that invoke OpenOCD to flash hardware. These will autom
       scons: building terminated because of errors.
       ```
     
-#### Flashing with OpenOCD and CMSIS-DAP dongles
-_This section is keps as a reference only, as to what the SCons flash targets do under the hood. You should use the SCons flash targets from the above section._
+## Begin Reference Material (ie only look at this stuff if you want to)
+
+#### Flashing with OpenOCD and CMSIS-DAP dongles (reference only, use SCons in practice)
+_This section is kept as a reference only, as to what the SCons flash targets do under the hood. You should use the SCons flash targets from the above section._
 
 1.  Ensure the built binaries (`.bin` files) are up to date by invoking `scons`.
 1.  Do a sanity check by launching OpenOCD with the interface and target configuration:
@@ -293,6 +261,60 @@ _This section is keps as a reference only, as to what the SCons flash targets do
 Examples of the target config are:
 - `target/lpc11xx.cfg` for LPC11C14 targets.
 - `lpc1549_openocd.cfg` (in this repository) for LPC1549 targets.
+
+### IDE Setup
+_This section is optional, for people who want to work with an IDE and GUI debug tools._
+
+#### Installing Eclipse and add-ons 
+1.  [Download Eclipse](https://www.eclipse.org/downloads/). Eclipse IDE for C/C++ developers is a good option.
+1.  Install some Eclipse plugins:
+    - (menu) > Help > Install New Software..., then enter the update site URL in the "Work with..." field.
+    - If some components cannot be installed, you may need to update your version of Eclipse.
+    1. Install [SConsolidator](http://www.sconsolidator.com/) (update site: <http://www.sconsolidator.com/update>), which allows some integration of SCons scripts.
+    1. Install [GNU ARM on Eclipse](https://gnuarmeclipse.github.io) (update site: <http://gnuarmeclipse.sourceforge.net/updates>), which provides Eclipse program and debug integration.
+1.  Define where the OpenOCD binary can be found:
+    - (menu) > Preferences > Run/Debug > OpenOCD, set the Folder to the folder where the OpenOCD binary is located.
+
+#### Project configuration
+1.  Add this repository as a Eclipse project:
+    - (menu) > New > Project > New SCons project from existing source. Under Existing Code Location, choose the folder where you checked out this repository.
+1.  Configure the indexer to include the proper system headers for this project:
+    - Right click the project and open the Properties window, then under C/C++ General > Paths and Symbols, in the Includes tab, for both GNU C and GNU C++ languages, add the GNU ARM includes directory:
+      - Under Debian-based systems, the path is `/usr/lib/gcc/arm-none-eabi/(version)/include`.
+      - Under Windows, the default is `C:\Program Files (x86)\GNU Tools ARM Embedded\(version)\arm-none-eabi\include`.
+1.  Build the project.
+    - In the Project Explorer, right-click the Tachyon-FW project and click Build.
+    - If the build succeeded, this should create all the `.elf` files (compiled firmware) in the `build/` directory.
+    - PROTIP: you can also start a build with Ctrl+B.
+1.  Set up a debug configuration. Right-click the `.elf` file and select Debug As > Debug Configurations...
+    1.  From the list on the left side of the new window, right click GDB OpenOCD Debugging and select New.
+    1.  Under the Main tab:
+        - Give the configuration a name.
+        - Ensure the Project field matches the project name.
+        - Set the C/C++ Application to the path to the `.elf` file, like `build/oled2.elf`.
+        - If you want to auto-build before launching, set it in Build (if required) before launching, either for this debug target only, or by modifying the workspace-wide setting.
+    1.  Under the Debugging tab:
+        - Leave the default OpenOCD Setup > Executable configuration of `${openocd_path}/${openocd_executable}`.
+        - Set the GDB Client Setup > Executable to `arm-none-eabi-gdb`.
+        - Set the Config Options to include flags for interface / target configuration (`-f`), and startup commands (`-c`):
+
+          ```
+          -f interface/cmsis-dap.cfg
+          -f target/<your-target-config.cfg>
+          -c init
+          -c "reset halt"
+          ```
+
+          For target config files, see [OpenOCD Target Configurations](#openocd-target-configurations).
+
+    1.  Under the Startup tab:
+        - In Run/Restart Commands, if you want the target to start running immediately after flashing completes, disable the Set breakpoint at: option.
+    1.  Under the Common tab:
+        - If you want to launch this target from the quickbar, check the options in Display in favorites menu.
+1.  Try launching the debug target. This will flash the microcontroller and start it.
+    - If all goes well, you should be able to pause the target (and Eclipse should bring up the next line of code the microcontroller will execute). The normal debugging tools are available: step-into, step-over, step-out, breakpoints, register view, memory view, and more.
+    - PROTIP: you can launch the last debug target with Ctrl+F11.
+    - Make sure to terminate a debugging session when done. Eclipse does not allow multiple concurrent debug sessions.
 
 ## Repository Maintenance
 Advanced topics for repository maintenance.
