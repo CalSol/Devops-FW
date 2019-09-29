@@ -27,71 +27,75 @@
 /*
  * Local peripheral definitions
  */
+//
 // System utilities
-WDT wdt(3000000);  // 3s WDT
-Timer usTimer;
-LongTimer timestamp(usTimer);
-DigitalIn BOD(P0_0);  // Brown-out detect
+//
+WDT Wdt(3 * 1000 * 1000);
+Timer UsTimer;
+LongTimer Timestamp(UsTimer);
 
+//
 // Comms interfaces
-CAN can(P0_7, P0_9, CAN_FREQUENCY);
-CANTimestampedRxBuffer<128> canBuffer(can, timestamp);
+//
+CAN Can(P1_8, P1_7, CAN_FREQUENCY);
+CANTimestampedRxBuffer<128> CanBuffer(Can, Timestamp);
 
-SPI spi0(P0_24, P0_26, P0_25);
-I2C i2c(P0_23, P0_22);
+DigitalIn SdCd(P0_9);
+DigitalFilter SdCdFilter(UsTimer, true, 250 * 1000, 25 * 1000);
+SDFileSystem Sd(P1_1, P0_10, P0_18, P0_7, "sd");
+DataloggerProtoFile Datalogger(Sd);
 
-DigitalIn SD_CD(P0_15);
-DigitalFilter SdCdFilter(usTimer, true, 250 * 1000, 25 * 1000);
-SDFileSystem sd(P0_13, P0_11, P0_12, P0_14, "sd");
-DataloggerProtoFile datalogger(sd);
 
+//
 // Sensors
-InterruptIn RTCINT(P0_18);  // RTC interrupt
-DigitalOut RTC_CS(P0_17);
-PCF2129 RTC(spi0, RTC_CS);
+//
+SPI SpiAux(P0_2, P0_3, P0_1);
+DigitalOut RtcCs(P0_29);
+PCF2129 Rtc(SpiAux, RtcCs);
 
-AnalogIn ADC12V(P0_1);
-AnalogIn ADC3V3V(P0_10);
-AnalogIn ADCSUPERCAPV(P0_2);
+AnalogIn Adc12V(P0_6);
+AnalogIn Adc5v(P0_5);
+AnalogIn AdcSupercap(P0_4);
 TempSensor AdcTempSensor;
 BandgapReference AdcBandgap;
 
-// thresholds in mV
-AnalogThresholdFilter mountDismountFilter(usTimer, false, 3750, 3500, 25 * 1000, 250 * 1000);
+AnalogThresholdFilter MountDismountFilter(UsTimer, false, 3750, 3500, 25 * 1000, 250 * 1000);  // mV thresholds
 
-// User interface / debugging
-DigitalIn SW1(P0_4, PullUp);
-DigitalFilter Sw1Filter(usTimer, true, 250*1000);
+//
+// Timing constants
+//
+uint32_t kVoltageWritePeriod_us = 1000 * 1000;
+TimerTicker VoltageSenseTicker(25 * 1000, UsTimer);
+TimerTicker VoltageSaveTicker(kVoltageWritePeriod_us, UsTimer);
+TimerTicker heartbeatTicker(1 * 1000 * 1000, UsTimer);
+TimerTicker MpptStatusTicker(200 * 1000, UsTimer);
+TimerTicker CanCheckTicker(1 * 1000 * 1000, UsTimer);
+TimerTicker FileSyncTicker(5 * 60 * 1000 * 1000, UsTimer);
+TimerTicker RemountTicker(250 * 1000, UsTimer);
+TimerTicker UndismountTicker(10 * 1000 * 1000, UsTimer);
 
-DigitalIn SwReset(P0_21, PullUp);
-DigitalFilter SwResetFilter(usTimer, true, 1000*1000);
 
-DigitalOut LEDR(P0_3);
-DigitalOut LEDG(P0_5);
-DigitalOut LEDB(P0_6);
+//
+// Debugging defs
+//
+DigitalIn SdSwitch(P0_11, PullUp);
+DigitalFilter Sw1Filter(UsTimer, true, 250*1000);
 
-uint8_t statusLedBits = 0xFF;
-PCA9557 STATUSLEDS(i2c, 0x30);
+DigitalIn CanSwitch(P1_4, PullUp);
+DigitalFilter SwResetFilter(UsTimer, true, 1000*1000);
 
-RgbActivityBitvector MainStatusLed(usTimer, &statusLedBits,
-    1 << 2, 1 << 3, 1 << 4, 0);
-RgbActivityDigitalOut CanStatusLed(usTimer, LEDR, LEDG, LEDB, 1);
-RgbActivityBitvector SdStatusLed(usTimer, &statusLedBits,
-    1 << 5, 1 << 6, 1 << 7, 0);
+DigitalOut SystemLedR(P1_6), SystemLedG(P0_17), SystemLedB(P1_11);
+RgbActivityDigitalOut MainStatusLed(UsTimer, SystemLedR, SystemLedG, SystemLedB, false);
+DigitalOut CanLedR(P0_15), CanLedG(P0_16), CanLedB(P0_14);
+RgbActivityDigitalOut CanStatusLed(UsTimer, CanLedR, CanLedG, CanLedB, false);
+DigitalOut SdLedR(P1_13), SdLedG(P0_13), SdLedB(P1_2);
+RgbActivityDigitalOut SdStatusLed(UsTimer, SdLedR, SdLedG, SdLedB, false);
 
-// RawSerial uart(P0_28, P0_29);  // currently unused
 DmaSerial<1024> swdConsole(P0_8, NC, 115200);
 
-static uint32_t kVoltageWritePeriod_us = 1000 * 1000;
-TimerTicker voltageSenseTicker(25 * 1000, usTimer);
-TimerTicker voltageSaveTicker(kVoltageWritePeriod_us, usTimer);
-TimerTicker heartbeatTicker(1000 * 1000, usTimer);
-TimerTicker mpptStatusTicker(200 * 1000, usTimer);
-TimerTicker canCheckTicker(1000 * 1000, usTimer);
-TimerTicker fileSyncTicker(5 * 60 * 1000 * 1000, usTimer);
-TimerTicker remountTicker(250 * 1000, usTimer);
-TimerTicker undismountTicker(10 * 1000 * 1000, usTimer);
-
+//
+// Datalogger Constants and defs
+//
 enum SourceId {
   kUnknown = 0,
   kSystem,
@@ -103,19 +107,12 @@ enum SourceId {
 
   kVoltageBandgap = 30,
   kVoltage12v,
-  kVoltage3v3,
+  kVoltage5v,
   kVoltageSupercap,
 
   kTemperatureChip = 40
 };
 
-#ifdef __GNUC__
-  #define STRINGIFY(X) #X
-  #define TOSTRING(x) STRINGIFY(x)
-  #define COMPILERNAME "GNUC " TOSTRING(__GNUC__) "." TOSTRING(__GNUC_MINOR__) "." TOSTRING(__GNUC_PATCHLEVEL__)
-#else
-  #error "Unknown compiler, add definition above"
-#endif
 
 void writeHeader(DataloggerProtoFile& datalogger) {
   DataloggerRecord rec = {
@@ -173,10 +170,10 @@ void writeHeader(DataloggerProtoFile& datalogger) {
   };
   datalogger.write(rec);
 
-  rec.sourceId = kVoltage3v3;
+  rec.sourceId = kVoltage5v;
   rec.payload.sourceDef = SourceDef {
     SourceDef_SourceType_VOLTAGE,
-    "3.3v, Vref+, mV"
+    "5v, Vref+, mV"
   };
   datalogger.write(rec);
 
@@ -239,8 +236,8 @@ static void tmMinToStr(char* dst, const tm time) {
 bool mountSd(bool wasWdtReset, uint32_t sdInsertedTimestamp,
     SDFileSystem& sd, DataloggerProtoFile& datalogger) {
   tm time;
-  uint32_t rtcTimestamp = timestamp.read_ms();
-  bool timeGood = RTC.gettime(&time);
+  uint32_t rtcTimestamp = Timestamp.read_ms();
+  bool timeGood = Rtc.gettime(&time);
 
   debugInfo("RTC %s %04d-%02d-%02d %02d:%02d:%02d", timeGood ? "OK" : "Stopped",
       time.tm_year + 1900, time.tm_mon + 1, time.tm_mday,
@@ -252,7 +249,7 @@ bool mountSd(bool wasWdtReset, uint32_t sdInsertedTimestamp,
 
   sd.set_transfer_sck(15000000);
   bool openSuccess = !sd.disk_initialize() && datalogger.newFile(dirname, filename);
-  uint32_t initTimestamp = timestamp.read_ms();
+  uint32_t initTimestamp = Timestamp.read_ms();
 
   if (openSuccess) {
     writeHeader(datalogger);
@@ -283,24 +280,25 @@ int main() {
   uint32_t* PINENABLE = (uint32_t*)0x400381C4;
   *PINENABLE = *PINENABLE | (1 << 21);
 
-  bool wasWdtReset = wdt.causedReset();
+  bool wasWdtReset = Wdt.causedReset();
 
   swdConsole.baud(115200);
 
   debugInfo("\r\n\r\n\r\n");
-  debugInfo("Datalogger Rv B, " GITVERSION);
+  debugInfo("Datalogger 2, " GITVERSION);
   debugInfo("Built " __DATE__ " " __TIME__ " " COMPILERNAME);
   if (wasWdtReset) {
     debugWarn("WDT Reset");
   }
 
   // For manually resetting the RTC
-//  while (SW1);
-//  RTC.settime({00, 33, 07,  02, 12 - 1, 2017 - 1900});
+//  while (SdSwitch);
+//  rtc.settime({30, 05,  9,  26,  9 - 1, 2019 - 1900});
 //  //           ss  mm  hh   dd  mm      yyyy
 
+
   tm time;
-  bool timeGood = RTC.gettime(&time);
+  bool timeGood = Rtc.gettime(&time);
   debugInfo("RTC %s %04d-%02d-%02d %02d:%02d:%02d", timeGood ? "OK" : "Stopped",
       time.tm_year + 1900, time.tm_mon + 1, time.tm_mday,
       time.tm_hour, time.tm_min, time.tm_sec);
@@ -310,7 +308,7 @@ int main() {
 
   StatisticalCounter<uint16_t, uint64_t> vrefpStats;
   StatisticalCounter<uint16_t, uint64_t> rail12vStats;
-  StatisticalCounter<uint16_t, uint64_t> rail3v3Stats;
+  StatisticalCounter<uint16_t, uint64_t> rail5vStats;
   StatisticalCounter<uint16_t, uint64_t> railSupercapStats;
   StatisticalCounter<int32_t, int64_t> tempStats;
   StatisticalCounter<uint32_t, uint64_t> loopStats;
@@ -320,41 +318,39 @@ int main() {
 
   DataloggerState state = kInactive;
 
-  STATUSLEDS.setDirection(0x00);
-
-  usTimer.start();
-  wdt.enable();
+  UsTimer.start();
+  Wdt.enable();
 
   while (true) {
-    uint32_t loopStartTime = timestamp.read_short_us();
+    uint32_t loopStartTime = Timestamp.read_short_us();
 
     /** Feed the watchdog timer so the board doesn't reset */
-    wdt.feed();
-    timestamp.update();
+    Wdt.feed();
+    Timestamp.update();
 
     // Control reset switch in software to allow aggressive filtering
-    if (SwResetFilter.update(SwReset) == DigitalFilter::kFalling) {
+    if (SwResetFilter.update(CanSwitch) == DigitalFilter::kFalling) {
       // enable the reset pin to allow holding the system in reset
       *PINENABLE = *PINENABLE & ~(1 << 21);
       NVIC_SystemReset();
     }
-    bool sw1Pressed = Sw1Filter.update(SW1) == DigitalFilter::kFalling;
-    SdCdFilter.update(SD_CD);
+    bool sdSwitchPressed = Sw1Filter.update(SdSwitch) == DigitalFilter::kFalling;
+    SdCdFilter.update(SdCd);
 
     if (state == kInactive || state == kUnsafeEject) {
       if (!SdCdFilter.read()
-          && mountDismountFilter.read()) {  // card inserted
-        sdInsertedTimestamp = timestamp.read_ms();
+          && MountDismountFilter.read()) {  // card inserted
+        sdInsertedTimestamp = Timestamp.read_ms();
 
-        if (mountSd(wasWdtReset, sdInsertedTimestamp, sd, datalogger)) {
-          fileSyncTicker.reset();
+        if (mountSd(wasWdtReset, sdInsertedTimestamp, Sd, Datalogger)) {
+          FileSyncTicker.reset();
 
           state = kActive;
           debugInfo("FSM -> kActive: successful mount");
           MainStatusLed.setIdle(RgbActivity::kOff);
           SdStatusLed.setIdle(RgbActivity::kGreen);
         } else {
-          remountTicker.reset();
+          RemountTicker.reset();
           numMountAttempts = 0;
 
           state = kBadCard;
@@ -362,26 +358,26 @@ int main() {
           MainStatusLed.setIdle(RgbActivity::kOff);
           SdStatusLed.setIdle(RgbActivity::kRed);
         }
-      } else if (!mountDismountFilter.read()) {  // voltage bad
+      } else if (!MountDismountFilter.read()) {  // voltage bad
         MainStatusLed.setIdle(RgbActivity::kPurple);
-      } else if (mountDismountFilter.read()) {  // voltage good, no SD card
+      } else if (MountDismountFilter.read()) {  // voltage good, no SD card
         MainStatusLed.setIdle(RgbActivity::kOff);
       }
     } else if (state == kBadCard) {
-      if (SdCdFilter.read() || !mountDismountFilter.read()) {  // disk ejected
+      if (SdCdFilter.read() || !MountDismountFilter.read()) {  // disk ejected
         state = kInactive;
         debugInfo("FSM -> kInactive: ejected / undervoltage");
         MainStatusLed.setIdle(RgbActivity::kOff);
         SdStatusLed.setIdle(RgbActivity::kOff);
-      } else if (remountTicker.checkExpired()) {
+      } else if (RemountTicker.checkExpired()) {
         numMountAttempts++;
 
-        if (mountSd(wasWdtReset, sdInsertedTimestamp, sd, datalogger)) {
-          fileSyncTicker.reset();
+        if (mountSd(wasWdtReset, sdInsertedTimestamp, Sd, Datalogger)) {
+          FileSyncTicker.reset();
 
           char remountInfoBuffer[128];
           sprintf(remountInfoBuffer, "%u unsuccessful mount attempts", numMountAttempts);
-          datalogger.write(generateInfoRecord(remountInfoBuffer, kSystem, timestamp.read_ms()));
+          Datalogger.write(generateInfoRecord(remountInfoBuffer, kSystem, Timestamp.read_ms()));
 
           state = kActive;
           debugInfo("FSM -> kActive: successful mount (after %u unsuccessful attempts)", numMountAttempts);
@@ -391,25 +387,25 @@ int main() {
       }
     } else if (state == kActive) {
       if (SdCdFilter.read()) {  // unsafe dismount
-        datalogger.closeFile();
+        Datalogger.closeFile();
 
         state = kUnsafeEject;
         debugInfo("FSM -> kUnsafeEject: unsafe dismount");
         MainStatusLed.setIdle(RgbActivity::kOff);
         SdStatusLed.setIdle(RgbActivity::kRed);
-      } else if (sw1Pressed) {  // user-requested dismount
-        datalogger.write(generateInfoRecord("User dismount", kSystem, timestamp.read_ms()));
-        datalogger.closeFile();
+      } else if (sdSwitchPressed) {  // user-requested dismount
+        Datalogger.write(generateInfoRecord("User dismount", kSystem, Timestamp.read_ms()));
+        Datalogger.closeFile();
 
-        undismountTicker.reset();
+        UndismountTicker.reset();
 
         state = kUserDismount;
         debugInfo("FSM -> kUserDismount: switch pressed");
         MainStatusLed.setIdle(RgbActivity::kBlue);
         SdStatusLed.setIdle(RgbActivity::kBlue);
-      } else if (!mountDismountFilter.read()) {  // undervoltage dismount
-        datalogger.write(generateInfoRecord("Undervoltage dismount", kSystem, timestamp.read_ms()));
-        datalogger.closeFile();
+      } else if (!MountDismountFilter.read()) {  // undervoltage dismount
+        Datalogger.write(generateInfoRecord("Undervoltage dismount", kSystem, Timestamp.read_ms()));
+        Datalogger.closeFile();
 
         state = kInactive;
         debugInfo("FSM -> kInactive: undervoltage");
@@ -422,7 +418,7 @@ int main() {
         debugInfo("FSM -> kInactive: ejected");
         MainStatusLed.setIdle(RgbActivity::kOff);
         SdStatusLed.setIdle(RgbActivity::kOff);
-      } else if (undismountTicker.checkExpired()) {
+      } else if (UndismountTicker.checkExpired()) {
         state = kInactive;
         debugInfo("FSM -> kInactive: dismount timeout");
         MainStatusLed.setIdle(RgbActivity::kOff);
@@ -437,71 +433,71 @@ int main() {
       MainStatusLed.pulse(RgbActivity::kRed);
     }
 
-    if (state == kActive && fileSyncTicker.checkExpired()) {
-      datalogger.syncFile();
+    if (state == kActive && FileSyncTicker.checkExpired()) {
+      Datalogger.syncFile();
       SdStatusLed.pulse(RgbActivity::kWhite);
     }
 
-    if (voltageSenseTicker.checkExpired()) {
+    if (VoltageSenseTicker.checkExpired()) {
       // Sample everything close together since the bandgap is used as a reference
       uint16_t bandgapSample = AdcBandgap.read_u16() >> 4;
-      uint16_t rail12vSample = ADC12V.read_u16() >> 4;
-      uint16_t rail3v3Sample = ADC3V3V.read_u16() >> 4;
-      uint16_t railSupercapSample = ADCSUPERCAPV.read_u16() >> 4;
+      uint16_t rail12vSample = Adc12V.read_u16() >> 4;
+      uint16_t rail5vSample = Adc5v.read_u16() >> 4;
+      uint16_t railSupercapSample = AdcSupercap.read_u16() >> 4;
       uint16_t tempVoltageSample = AdcTempSensor.read_u16() >> 4;
 
       // Convert everything to mV
       uint16_t vrefpSample = 905 * 4095 / bandgapSample;
 
-      // The 3.3 rail will be used to control dismount, so must be accurate even
-      // as Vref+ dips and is referenced to the internal 0.9v bandgap
-      uint16_t rail3v3BandgapSample = (uint32_t)rail3v3Sample * vrefpSample * (1+1) / 1 / 4095;
-
       // The precision 3v reference is more accurate than the internal bandgap,
       // so log measurements according to that.
-      rail12vSample = (uint32_t)rail12vSample * 3000 * (15+82) / 15 / 4095;
-      rail3v3Sample = (uint32_t)rail3v3Sample * 3000 * (1+1) / 1 / 4095;
-      railSupercapSample = (uint32_t)railSupercapSample * 3000 * (1+1) / 1 / 4095;
-      tempVoltageSample = (uint32_t)tempVoltageSample * 3000 / 4095;  // convert to mV
+      rail12vSample = (uint32_t)rail12vSample * vrefpSample * (47+15) / 15 / 4095;
+      rail5vSample = (uint32_t)rail5vSample * vrefpSample * (10+15) / 15 / 4095;
+      railSupercapSample = (uint32_t)railSupercapSample * vrefpSample * (10+15) / 15 / 4095;
+      tempVoltageSample = (uint32_t)tempVoltageSample * vrefpSample / 4095;  // convert to mV
       int32_t tempSample = (577 - tempVoltageSample) * 1000 * 100 / 229;  // -2.29mV/C, 577.3mV @ 0C
 
       vrefpStats.addSample(vrefpSample);
       rail12vStats.addSample(rail12vSample);
-      rail3v3Stats.addSample(rail3v3Sample);
+      rail5vStats.addSample(rail5vSample);
       railSupercapStats.addSample(railSupercapSample);
       tempStats.addSample(tempSample);
 
-      mountDismountFilter.update(railSupercapSample);
+      MountDismountFilter.update(railSupercapSample);
     }
 
-    if (voltageSaveTicker.checkExpired()) {
-      uint32_t thisTimestamp = timestamp.read_ms();
+    if (VoltageSaveTicker.checkExpired()) {
+      uint32_t thisTimestamp = Timestamp.read_ms();
 
       if (state == kActive) {
-        datalogger.write(generateStatsRecord<uint16_t, uint64_t>(
+        Datalogger.write(generateStatsRecord<uint16_t, uint64_t>(
             vrefpStats, kVoltageBandgap, thisTimestamp, kVoltageWritePeriod_us / 1000));
 
-        datalogger.write(generateStatsRecord<uint16_t, uint64_t>(
+        Datalogger.write(generateStatsRecord<uint16_t, uint64_t>(
             rail12vStats, kVoltage12v, thisTimestamp, kVoltageWritePeriod_us / 1000));
-        datalogger.write(generateStatsRecord<uint16_t, uint64_t>(
-            rail3v3Stats, kVoltage3v3, thisTimestamp, kVoltageWritePeriod_us / 1000));
-        datalogger.write(generateStatsRecord<uint16_t, uint64_t>(
+        Datalogger.write(generateStatsRecord<uint16_t, uint64_t>(
+            rail5vStats, kVoltage5v, thisTimestamp, kVoltageWritePeriod_us / 1000));
+        Datalogger.write(generateStatsRecord<uint16_t, uint64_t>(
             railSupercapStats, kVoltageSupercap, thisTimestamp, kVoltageWritePeriod_us / 1000));
 
-        datalogger.write(generateStatsRecord<int32_t, int64_t>(
+        Datalogger.write(generateStatsRecord<int32_t, int64_t>(
             tempStats, kTemperatureChip, thisTimestamp, kVoltageWritePeriod_us / 1000));
 
-        datalogger.write(generateStatsRecord<uint32_t, uint64_t>(
+        Datalogger.write(generateStatsRecord<uint32_t, uint64_t>(
             loopStats, kMainLoop, thisTimestamp, kVoltageWritePeriod_us / 1000));
 
-        datalogger.write(generateHistogramRecord<8>(
+        Datalogger.write(generateHistogramRecord<8>(
             loopDistribution, kMainLoop, thisTimestamp, kVoltageWritePeriod_us / 1000));
 
         SdStatusLed.pulse(RgbActivity::kYellow);
       }
 
+      debugInfo("ADCs: Vrp=%5dmv,  12v=%5dmv,  Sv=%5dmv,  Vsc=%5dmv, T=%2dmc",
+          vrefpStats.read().avg, rail12vStats.read().avg, rail5vStats.read().avg, railSupercapStats.read().avg,
+          tempStats.read().avg);
+
       rail12vStats.reset();
-      rail3v3Stats.reset();
+      rail5vStats.reset();
       railSupercapStats.reset();
       vrefpStats.reset();
       tempStats.reset();
@@ -511,8 +507,9 @@ int main() {
     }
 
     if (heartbeatTicker.checkExpired()) {
-      canBuffer.write(makeMessage(CAN_HEART_DATALOGGER, timestamp.read_short_us()));
+      CanBuffer.write(makeMessage(CAN_HEART_DATALOGGER, Timestamp.read_short_us()));
 
+      CanStatusLed.pulse(RgbActivity::kYellow);
       if (state == kInactive) {
         MainStatusLed.pulse(RgbActivity::kRed);
       } else if (state == kActive) {
@@ -520,52 +517,49 @@ int main() {
       }
     }
 
-    if (mpptStatusTicker.checkExpired()) {
+    if (MpptStatusTicker.checkExpired()) {
       CANMessage msg(CAN_MODULE_A_MPPT_STATUS, NULL, 0, CANRemote);
-      canBuffer.write(msg);
+      CanBuffer.write(msg);
       msg.id = CAN_MODULE_B_MPPT_STATUS;
-      canBuffer.write(msg);
+      CanBuffer.write(msg);
       msg.id = CAN_MODULE_C_MPPT_STATUS;
-      canBuffer.write(msg);
+      CanBuffer.write(msg);
       msg.id = CAN_MODULE_D_MPPT_STATUS;
-      canBuffer.write(msg);
+      CanBuffer.write(msg);
+
+      CanStatusLed.pulse(RgbActivity::kYellow);
     }
 
-    if (canCheckTicker.checkExpired()) {
+    if (CanCheckTicker.checkExpired()) {
       if (LPC_C_CAN0->CANCNTL & (1 << 0)) {
         LPC_C_CAN0->CANCNTL &= ~(1 << 0);
         CanStatusLed.pulse(RgbActivity::kBlue);
 
         if (state == kActive) {
-          datalogger.write(generateInfoRecord("CAN Reset", kCan, timestamp.read_ms()));
+          Datalogger.write(generateInfoRecord("CAN Reset", kCan, Timestamp.read_ms()));
           SdStatusLed.pulse(RgbActivity::kYellow);
         }
       }
     }
 
     Timestamped_CANMessage msg;
-    while (canBuffer.read(msg)) {
+    while (CanBuffer.read(msg)) {
       if (msg.isError) {
         CanStatusLed.pulse(RgbActivity::kRed);
       } else {
         CanStatusLed.pulse(RgbActivity::kGreen);
       }
       if (state == kActive) {
-        datalogger.write(canMessageToRecord(msg, kCan));
+        Datalogger.write(canMessageToRecord(msg, kCan));
         SdStatusLed.pulse(RgbActivity::kYellow);
       }
     }
 
+    MainStatusLed.update();
+    CanStatusLed.update();
+    SdStatusLed.update();
 
-    bool i2cLedsUpdated = false;
-    i2cLedsUpdated |= MainStatusLed.update();
-    i2cLedsUpdated |= CanStatusLed.update();
-    i2cLedsUpdated |= SdStatusLed.update();
-    if (i2cLedsUpdated) {
-      STATUSLEDS.writeOutputs(statusLedBits);
-    }
-
-    uint32_t loopTime = timestamp.read_short_us() - loopStartTime;
+    uint32_t loopTime = Timestamp.read_short_us() - loopStartTime;
     loopDistribution.addSample(loopTime);
     loopStats.addSample(loopTime);
   }
