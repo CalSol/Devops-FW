@@ -20,9 +20,13 @@
 #include "DmaSerial.h"
 #include "DigitalFilter.h"
 #include "AnalogThresholdFilter.h"
+#include "EInk.h"
+#include "DefaultFonts.h"
 
 #include "datalogger.pb.h"
 #include "RecordEncoding.h"
+
+#include <locale>
 
 /*
  * Local peripheral definitions
@@ -33,6 +37,7 @@
 WDT Wdt(3 * 1000 * 1000);
 Timer UsTimer;
 LongTimer Timestamp(UsTimer);
+
 
 //
 // Comms interfaces
@@ -61,6 +66,7 @@ BandgapReference AdcBandgap;
 
 AnalogThresholdFilter MountDismountFilter(UsTimer, false, 3750, 3500, 25 * 1000, 250 * 1000);  // mV thresholds
 
+
 //
 // Timing constants
 //
@@ -74,10 +80,18 @@ TimerTicker FileSyncTicker(5 * 60 * 1000 * 1000, UsTimer);
 TimerTicker RemountTicker(250 * 1000, UsTimer);
 TimerTicker UndismountTicker(10 * 1000 * 1000, UsTimer);
 
+TimerTicker EInkTicker(30 * 1000 * 1000, UsTimer);
 
 //
 // Debugging defs
 //
+DigitalIn EInkBusy(P0_30);
+DigitalOut EInkReset(P0_0, 0);
+DigitalOut EInkDc(P0_31, 1);
+DigitalOut EInkCs(P1_0, 1);
+
+//EInk152Graphics EInk(SpiAux, EInkCs, EInkDc, EInkReset, EInkBusy);
+
 DigitalIn SdSwitch(P0_11, PullUp);
 DigitalFilter Sw1Filter(UsTimer, true, 250*1000);
 
@@ -91,7 +105,7 @@ RgbActivityDigitalOut CanStatusLed(UsTimer, CanLedR, CanLedG, CanLedB, false);
 DigitalOut SdLedR(P1_13), SdLedG(P0_13), SdLedB(P1_2);
 RgbActivityDigitalOut SdStatusLed(UsTimer, SdLedR, SdLedG, SdLedB, false);
 
-DmaSerial<1024> swdConsole(P0_8, NC, 115200);
+DmaSerial<1024> swdConsole(P0_8, NC, 115200);  // TODO increase size when have more RAM
 
 //
 // Datalogger Constants and defs
@@ -320,6 +334,24 @@ int main() {
 
   UsTimer.start();
   Wdt.enable();
+//  EInk.init();
+
+//  EInk.text(0, 0, "DATALOGGER", Font5x7, 255);
+
+  char strBuf[128] = GITVERSION "  " __DATE__ " " __TIME__;
+  for (char* buildStrPtr = strBuf; *buildStrPtr != '\0'; buildStrPtr++) {
+    *buildStrPtr = std::toupper(*buildStrPtr);
+  }
+//  EInk.text(0, 8, strBuf, Font3x5, 255);
+
+  sprintf(strBuf, "ON %02d %02d %02d %02d:%02d:%02d  %s",
+      (time.tm_year + 1900) % 100, time.tm_mon + 1, time.tm_mday,
+      time.tm_hour, time.tm_min, time.tm_sec,
+      timeGood ? "OK" : "STP");
+//  EInk.text(0, 16, strBuf, Font5x7, 255);
+
+//  EInk.update();
+
 
   while (true) {
     uint32_t loopStartTime = Timestamp.read_short_us();
@@ -465,6 +497,22 @@ int main() {
 
       MountDismountFilter.update(railSupercapSample);
     }
+
+//    if (EInkTicker.checkExpired()) {
+//      EInk.rectFilled(0, 32, 152, 32, 0);
+//
+//      uint32_t timestampMs = Timestamp.read_ms();
+//      sprintf(strBuf, "UP %02dH  %02dM  %02dS",
+//          timestampMs / 1000 / 60 / 60, timestampMs / 1000 / 60 % 60, timestampMs / 1000 % 60);
+//      EInk.text(0, 32, strBuf, Font5x7, 255);
+//
+//      sprintf(strBuf, "+V:  %d %03d    5V:  %d %03d",
+//          vrefpStats.read().avg / 1000, vrefpStats.read().avg % 1000,
+//          rail5vStats.read().avg / 1000, rail5vStats.read().avg % 1000);
+//      EInk.text(0, 40, strBuf, Font5x7, 255);
+//
+//      EInk.update();
+//    }
 
     if (VoltageSaveTicker.checkExpired()) {
       uint32_t thisTimestamp = Timestamp.read_ms();
