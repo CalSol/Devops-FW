@@ -74,7 +74,6 @@ uint32_t kVoltageWritePeriod_us = 1000 * 1000;
 TimerTicker VoltageSenseTicker(25 * 1000, UsTimer);
 TimerTicker VoltageSaveTicker(kVoltageWritePeriod_us, UsTimer);
 TimerTicker heartbeatTicker(1 * 1000 * 1000, UsTimer);
-TimerTicker MpptStatusTicker(200 * 1000, UsTimer);
 TimerTicker CanCheckTicker(1 * 1000 * 1000, UsTimer);
 TimerTicker FileSyncTicker(5 * 60 * 1000 * 1000, UsTimer);
 TimerTicker RemountTicker(250 * 1000, UsTimer);
@@ -557,7 +556,13 @@ int main() {
     if (heartbeatTicker.checkExpired()) {
       CanBuffer.write(makeMessage(CAN_HEART_DATALOGGER, Timestamp.read_short_us()));
 
-      CanStatusLed.pulse(RgbActivity::kYellow);
+      CoreStatus status;
+      status.vref_bandgap = 905 * 4096 / (AdcBandgap.read_u16() >> 4);
+      status.temperature = (AdcTempSensor.read_u16() >> 4) * status.vref_bandgap / 4095;  // convert to mV
+      status.temperature = (577 - (uint32_t)status.temperature) * 100 * 100 / 229;
+      CanBuffer.write(makeMessage(CAN_CORE_STATUS_DATALOGGER, status));
+
+      CanStatusLed.pulse(RgbActivity::kCyan);
       if (state == kInactive) {
         MainStatusLed.pulse(RgbActivity::kRed);
       } else if (state == kActive) {
@@ -565,27 +570,14 @@ int main() {
       }
     }
 
-    if (MpptStatusTicker.checkExpired()) {
-      CANMessage msg(CAN_MODULE_A_MPPT_STATUS, NULL, 0, CANRemote);
-      CanBuffer.write(msg);
-      msg.id = CAN_MODULE_B_MPPT_STATUS;
-      CanBuffer.write(msg);
-      msg.id = CAN_MODULE_C_MPPT_STATUS;
-      CanBuffer.write(msg);
-      msg.id = CAN_MODULE_D_MPPT_STATUS;
-      CanBuffer.write(msg);
-
-      CanStatusLed.pulse(RgbActivity::kYellow);
-    }
-
     if (CanCheckTicker.checkExpired()) {
       if (LPC_C_CAN0->CANCNTL & (1 << 0)) {
         LPC_C_CAN0->CANCNTL &= ~(1 << 0);
-        CanStatusLed.pulse(RgbActivity::kBlue);
+        CanStatusLed.pulse(RgbActivity::kRed);
 
         if (state == kActive) {
           Datalogger.write(generateInfoRecord("CAN Reset", kCan, Timestamp.read_ms()));
-          SdStatusLed.pulse(RgbActivity::kYellow);
+          SdStatusLed.pulse(RgbActivity::kCyan);
         }
       }
     }
