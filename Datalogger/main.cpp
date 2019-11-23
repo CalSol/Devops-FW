@@ -306,7 +306,7 @@ int main() {
 
   // For manually resetting the RTC
 //  while (SdSwitch);
-//  rtc.settime({30, 05,  9,  26,  9 - 1, 2019 - 1900});
+//  Rtc.settime({20, 55,  20,  23,  11 - 1, 2019 - 1900});
 //  //           ss  mm  hh   dd  mm      yyyy
 
 
