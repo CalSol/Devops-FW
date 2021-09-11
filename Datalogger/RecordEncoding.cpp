@@ -28,7 +28,7 @@ DataloggerRecord canMessageToRecord(Timestamped_CANMessage msg, uint8_t sourceId
       msg.data.msg.type ? CanMessage_RtrType_REMOTE_FRAME : CanMessage_RtrType_DATA_FRAME,
       {msg.data.msg.len, {0}}
     };
-    for (uint8_t i; i<msgRec.data.size; i++) {
+    for (uint8_t i=0; i<msgRec.data.size; i++) {
       msgRec.data.bytes[i] = msg.data.msg.data[i];
     }
 
@@ -54,6 +54,9 @@ DataloggerRecord canMessageToRecord(Timestamped_CANMessage msg, uint8_t sourceId
       break;
     case BeIRQ:
       msgErr.source = CanError_ErrorSource_BUS_OFF;
+      break;
+    case WuIRQ:
+      msgErr.source = CanError_ErrorSource_UNKNOWN;
       break;
     }
 

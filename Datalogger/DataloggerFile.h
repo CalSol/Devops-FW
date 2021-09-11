@@ -4,7 +4,7 @@
 #include "mbed.h"
 #include "FileSystemLike.h"
 
-#include "datalogger.pb.h"
+#include "datalogger/datalogger.pb.h"
 
 class DataloggerFile {
 public:

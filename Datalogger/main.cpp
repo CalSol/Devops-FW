@@ -3,6 +3,9 @@
 #include <can_id.h>
 #include <can_struct.h>
 
+#include <SDBlockDevice.h>
+#include <FATFileSystem.h>
+
 #define DEBUG_ENABLED
 #include "debug.h"
 
@@ -10,7 +13,6 @@
 #include "AnalogPeripherals.h"
 #include "PCF2129.h"
 #include "PCA9557.h"
-#include "SDFileSystem.h"
 #include "DataloggerFile.h"
 #include "can_buffer_timestamp.h"
 #include "RgbActivityLed.h"
@@ -23,7 +25,7 @@
 #include "EInk.h"
 #include "DefaultFonts.h"
 
-#include "datalogger.pb.h"
+#include "datalogger/datalogger.pb.h"
 #include "RecordEncoding.h"
 
 #include <locale>
@@ -47,8 +49,9 @@ CANTimestampedRxBuffer<128> CanBuffer(Can, Timestamp);
 
 DigitalIn SdCd(P0_9);
 DigitalFilter SdCdFilter(UsTimer, true, 250 * 1000, 25 * 1000);
-SDFileSystem Sd(P1_1, P0_10, P0_18, P0_7, "sd");
-DataloggerProtoFile Datalogger(Sd);
+SDBlockDevice Sd(P1_1, P0_10, P0_18, P0_7, 15000000);
+FATFileSystem Fat("fs");
+DataloggerProtoFile Datalogger(Fat);
 
 
 //
@@ -135,7 +138,7 @@ void writeHeader(DataloggerProtoFile& datalogger) {
     DataloggerRecord_info_tag, {}
   };
   rec.payload.info = InfoString {
-    "Datalogger Rv B, " GITVERSION ", " __DATE__ " " __TIME__ " " COMPILERNAME
+    "Datalogger Rv B, " __DATE__ " " __TIME__ " " COMPILERNAME
     };
   datalogger.write(rec);
 
@@ -247,7 +250,7 @@ static void tmMinToStr(char* dst, const tm time) {
 }
 
 bool mountSd(bool wasWdtReset, uint32_t sdInsertedTimestamp,
-    SDFileSystem& sd, DataloggerProtoFile& datalogger) {
+    SDBlockDevice& sd, FATFileSystem &fat, DataloggerProtoFile& datalogger) {
   tm time;
   uint32_t rtcTimestamp = Timestamp.read_ms();
   bool timeGood = Rtc.gettime(&time);
@@ -260,8 +263,32 @@ bool mountSd(bool wasWdtReset, uint32_t sdInsertedTimestamp,
   tmDateToStr(dirname, time);
   tmMinToStr(filename, time);
 
-  sd.set_transfer_sck(15000000);
-  bool openSuccess = !sd.disk_initialize() && datalogger.newFile(dirname, filename);
+  bool openSuccess = true;
+  int sdInitResult = sd.init();
+  if (sdInitResult) {
+    debugInfo("SD init failed: %i", sdInitResult);
+    sd.deinit();
+    openSuccess = false;
+  }
+  if (openSuccess) {
+    int fatMountResult = fat.mount(&sd);
+    if (fatMountResult) {
+      debugInfo("FAT mount failed: %i", fatMountResult);
+      fat.unmount();
+      sd.deinit();
+      openSuccess = false;
+    }
+  }
+  if (openSuccess) {
+    bool newfileResult = datalogger.newFile(dirname, filename);
+    if (!newfileResult) {
+      debugInfo("New file failed: %i", newfileResult);
+      openSuccess = false;
+      fat.unmount();
+      sd.deinit();
+    }
+  }
+
   uint32_t initTimestamp = Timestamp.read_ms();
 
   if (openSuccess) {
@@ -298,7 +325,7 @@ int main() {
   swdConsole.baud(115200);
 
   debugInfo("\r\n\r\n\r\n");
-  debugInfo("Datalogger 2, " GITVERSION);
+  debugInfo("Datalogger 2");
   debugInfo("Built " __DATE__ " " __TIME__ " " COMPILERNAME);
   if (wasWdtReset) {
     debugWarn("WDT Reset");
@@ -306,7 +333,7 @@ int main() {
 
   // For manually resetting the RTC
 //  while (SdSwitch);
-//  Rtc.settime({20, 55,  20,  23,  11 - 1, 2019 - 1900});
+//  Rtc.settime({20, 55, 20,  23, 11 - 1, 2019 - 1900});
 //  //           ss  mm  hh   dd  mm      yyyy
 
 
@@ -316,7 +343,7 @@ int main() {
       time.tm_year + 1900, time.tm_mon + 1, time.tm_mday,
       time.tm_hour, time.tm_min, time.tm_sec);
 
-  uint32_t numMountAttempts = 0;
+  uint16_t numMountAttempts = 0;
   uint32_t sdInsertedTimestamp;
 
   StatisticalCounter<uint16_t, uint64_t> vrefpStats;
@@ -337,7 +364,7 @@ int main() {
 
 //  EInk.text(0, 0, "DATALOGGER", Font5x7, 255);
 
-  char strBuf[128] = GITVERSION "  " __DATE__ " " __TIME__;
+  char strBuf[128] = __DATE__ " " __TIME__;
   for (char* buildStrPtr = strBuf; *buildStrPtr != '\0'; buildStrPtr++) {
     *buildStrPtr = std::toupper(*buildStrPtr);
   }
@@ -373,7 +400,7 @@ int main() {
           && MountDismountFilter.read()) {  // card inserted
         sdInsertedTimestamp = Timestamp.read_ms();
 
-        if (mountSd(wasWdtReset, sdInsertedTimestamp, Sd, Datalogger)) {
+        if (mountSd(wasWdtReset, sdInsertedTimestamp, Sd, Fat, Datalogger)) {
           FileSyncTicker.reset();
 
           state = kActive;
@@ -403,7 +430,7 @@ int main() {
       } else if (RemountTicker.checkExpired()) {
         numMountAttempts++;
 
-        if (mountSd(wasWdtReset, sdInsertedTimestamp, Sd, Datalogger)) {
+        if (mountSd(wasWdtReset, sdInsertedTimestamp, Sd, Fat, Datalogger)) {
           FileSyncTicker.reset();
 
           char remountInfoBuffer[128];
@@ -427,6 +454,8 @@ int main() {
       } else if (sdSwitchPressed) {  // user-requested dismount
         Datalogger.write(generateInfoRecord("User dismount", kSystem, Timestamp.read_ms()));
         Datalogger.closeFile();
+        Fat.unmount();
+        Sd.deinit();
 
         UndismountTicker.reset();
 
@@ -437,6 +466,8 @@ int main() {
       } else if (!MountDismountFilter.read()) {  // undervoltage dismount
         Datalogger.write(generateInfoRecord("Undervoltage dismount", kSystem, Timestamp.read_ms()));
         Datalogger.closeFile();
+        Fat.unmount();
+        Sd.deinit();
 
         state = kInactive;
         debugInfo("FSM -> kInactive: undervoltage");
@@ -539,7 +570,7 @@ int main() {
         SdStatusLed.pulse(RgbActivity::kYellow);
       }
 
-      debugInfo("ADCs: Vrp=%5dmv,  12v=%5dmv,  Sv=%5dmv,  Vsc=%5dmv, T=%2dmc",
+      debugInfo("ADCs: Vrp=%5dmv,  12v=%5dmv,  Sv=%5dmv,  Vsc=%5dmv, T=%2ldmc",
           vrefpStats.read().avg, rail12vStats.read().avg, rail5vStats.read().avg, railSupercapStats.read().avg,
           tempStats.read().avg);
 

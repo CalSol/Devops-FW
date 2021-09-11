@@ -1,84 +1,153 @@
 # Tachyon
-This repository contains the microcontroller code for Tachyon
+This repository contains the microcontroller code for Tachyon.
 
-## Setup
-### Toolchain installation
+**Quick References**
+- [OpenOCD Troubleshooting](#openocd-troubleshooting)
+- [OpenOCD Operations](#openocd-operations)
 
-#### Please read below
-You will install these components of the build system here:
-- [GCC-ARM](https://launchpad.net/gcc-arm-embedded), the compiler targeting the embedded microcontroller.
-- [SCons](http://scons.org/), the build system.
-- [OpenOCD](http://openocd.org/), a program that interfaces with the debug link. 
 
-#### Platform-specific directions are below. Skip to your platform.
+## PlatformIO Setup and Getting Started
+_PlatformIO is a cross-platform (in every sense of the term: multiple OSes, multiple frameworks, mulitple chips across multiple vendors) build tool that handles the details of setup for you._
 
-#### For Debian-based Linux
-1.  Install the [GCC-ARM PPA by following these instructions](https://launchpad.net/~team-gcc-arm-embedded/+archive/ubuntu/ppa). Note: the one included by default in the system package manager may not work.
-    - If you cannot run the `add-apt-repository` command, you may need to install `software-properties-common`:
-      ```
-      sudo apt-get install software-properties-common
-      ```
-1.  Install everything else:
-    ```
-    sudo apt-get install git
-    sudo apt-get install scons
-    sudo apt-get install openocd
-    ```
-1.  Add the OpenOCD scripts directory to your system `OPENOCD_SCRIPTS`, allowing you to run OpenOCD from anywhere without needing to explicitly specify the scripts directory location. This is typically in `/usr/share/openocd/scripts`, and should contain the file `interface/cmsis-dap.cfg`.
+### PlatformIO with VSCode
+**Note**: _PlatformIO extensions are also available for [other IDEs](https://platformio.org/install/integration) such as Eclipse, if you're more familiar with them._
+_VSCode is our baseline supported IDE since it's a free and open-source*, cross-platform (Windows / Mac / Linux), and full-functioned C/C++ IDE that works pretty well._
+
+> <details>
+>   <summary>* VSCode and open-source</summary>
+>
+>   While VSCode is open-source, the VSCode binaries from Microsoft have a proprietary license and are not direct builds of the open-source repositories.
+>   See <a href="https://vscodium.com/">VSCodium</a> for more details, if this matters to you.
+>
+>   As PlatformIO is currently not available on the VSCodium package manager, you will need to <a href="https://marketplace.visualstudio.com/items?itemName=platformio.platformio-ide">download the .vsix</a> and install it.
+>   It may also depend on C/C++ support for VSCode, and you'll have to <a href="https://github.com/microsoft/vscode-cpptools/releases">download the .vsix</a> and install it.
+> </details>
+
+Follow the [official instructions](https://docs.platformio.org/en/latest/integration/ide/vscode.html#installation).
+
+**Installation tl;dr preview for most users**: [install VSCode](https://code.visualstudio.com/) (if you don't have it already), and install the PlatformIO extension from the package manager.
+
+**Getting Started with VSCode**: Once VSCode is installed, follow these steps to get started.
+
+1.  Open the project, by clicking "Open Project" from the PIO Home page, then navigate to where you cloned this repo (platformio.ini should be in this folder).
+
+    ![PlatformIO home page](images/VSCode_PIO_home.png)
+
+    - If this isn't visible, you may need to select the PlatformIO tab on the far left, then navigate to PIO Home > Open.
+
+      ![PlatformIO home page](images/VSCode_PIO_open.png)
+
+1.  If the project loaded correctly, you should be able to see the list of targets on the PlatformIO tab on the left side:
     
-#### For Windows
-1.  [Install command-line git](https://git-scm.com/download/win).
-      - At the end of the installation, check "Use Git from the Windows Command Prompt" if you want to run Git from outside the Git Bash command prompt.
-      - Whether you use command-line git, GitHub desktop, or some other interface (more details below), this is still required for the build system to sanity check submodule status.
-1.  [Install GCC-ARM](https://developer.arm.com/open-source/gnu-toolchain/gnu-rm/downloads).
-    - At the end of the installation, make sure to check "Add path to environment variable" so it can be run from anywhere.
-1.  Install SCons using pip. On the command line, run:
+    ![PlatformIO tab with list of environments](images/VSCode_PIO_environments.png)
+    
+1.  Expand one of those targets (such as datalogger shown above) to see the available options.
 
-    ```
-    pip install scons
-    ```
+1.  Click "Build" to compile firmware for that target, without uploading to the board.
+    > Common operations are also available on the bottom toolbar.
+    >
+    > ![VSCode bottom toolbar / statusbar](images/VSCode_PIO_statusbar.png)
+    >
+    > For example, the check mark also performs a build.
+    
+1.  To upload and run in debug mode, navigate to the Debug tab on the left side:
 
-    - `pip` should be included with your Python install. [Download and install Python](https://www.python.org/downloads/) if you do not have it already. SCons3 is compatible with either Python2 or 3.
-    - If you get the error `option --single-version-externally-managed not recognized`, you need to install or upgrade some Python packages. On the command line, run:
+    ![Debug tab with configuration](images/VSCode_DebugConfigs.png)
+    
+    From the dropdown, select the "skip Pre-Debug" configuration (as indicated in the picture).
+    > The normal (non skip Pre-Debug) configuration unnecessarily compiles the firmware twice and takes more time to launch.
+    > You only need to set this once, and this configuration applies for all debug launches.
+    
+    Then, click the green arrow to start debugging.
+    > You can also start debugging by going to main menu > Run > Start Debugging.
+    > The menu item should also show the associated hotkey.
+    >
+    > Although there is also an Upload option, that seems broken and its usage is not recommended.
+    
+    You may need to switch to the Debug Console to see the compile and upload progress:
+    ![Debug console example](images/VSCode_Terminal_DebugConsole.png)
+    
+1.  When upload completes (and debugging starts), it will breakpoint (pause the microcontroller) by default right before entering `main`.
+    From the debug controls toolbar ![Debug controls toolbar](images/VSCode_DebugControls.png), you can resume, pause, and single-step through code.
+    Mouse-over the buttons for descriptions and hotkeys.
+    > Step-over runs the current line of code (even if it's a function call), then pauses at the beginning of the next line.
+    > Step-into steps into the function at the current line of code, pausing at the beginning of the first line in that function.
+    > The microcontroller can be paused at any point while the microcontroller is running.
+    >
+    > Pausing in debug does NOT pause the watchdog timer (if the code uses it).
+    > The microcontroller may unexpectedly reset in this case.
+    
+1.  You can also open the serial monitor, from the PlatformIO tab on the left side.
+    This opens a terminal that shows the serial output from the microcontroller.
 
-      ```
-      pip install -U setuptools
-      pip install -U wheel
-      ```
+### PlatformIO Core (command-line)
+Follow the [official instructions](https://docs.platformio.org/en/latest/core/installation.html).
 
-1.  [Install OpenOCD v0.10.0-5-20171110 using the unofficial .exe installer](https://github.com/gnu-mcu-eclipse/openocd/releases/tag/v0.10.0-5-20171110). There are no official binaries without requiring additional environments like MSYS.
-    - If you want to run OpenOCD from the command line, add the OpenOCD binary directory to your system `PATH`. The default is `C:\Program Files\GNU ARM Eclipse\OpenOCD\(version)\bin`.
-1.  Add the OpenOCD scripts directory to your system `OPENOCD_SCRIPTS`, allowing you to run OpenOCD from anywhere without needing to explicitly specify the scripts directory location. This is typically in `C:\Program Files\GNU ARM Eclipse\OpenOCD\(version)\scripts`, and should contain the file `interface/cmsis-dap.cfg`.
-    - On Windows 10, you can add environment variables by going to the start ment, then "Edit the system environment variables", which brings up the System Properties dialog. Click the "Environment Variables..." button to bring up the Environment Variables dialog. Under "System variables", either edit or add (with "New...") `OPENOCD_SCRIPTS`.
-1.  On Windows 8 and later, the [CDC Driver](https://github.com/x893/CMSIS-DAP/blob/master/Firmware/STM32/CMSIS_DAP.inf) for the CMSIS-DAP dongles may solve an issue with the dongles becoming non-responsive after a few seconds.
+**tl;dr for most users**: download a Python installer script and run it.
 
-#### For Mac
-1.  Download and install homebrew .
-1.  Enter the following commands in terminal: 
-    ```
-    brew tap PX4/homebrew-px4
-    brew install gcc-arm-none-eabi
+Once you have PlatformIO installed (and `pio` working on the command-line), you can run PlatformIO commands while in the repository folder.
+To build _all_ binaries, run:
+```
+pio run
+```
 
-    brew install scons 
-  
-    brew install openocd
-    ```
-1.  Install command line git
-    ```
-    brew install git
-    ```
-  
+To build a specific board, such as `datalogger`, run:
+```
+pio run -e datalogger
+```
+See the `[env:...]` sections at the end of [platformio.ini](platformio.ini) for available targets.
+
+To upload binaries, run (with the target board connected to your computer via a programming dongle):
+```
+pio run -e datalogger --target upload
+```
+
+> <details>
+>   <summary>Avoiding conflicts with VSCode</summary>
+>
+>   If you also have VSCode with PlatformIO installed and want to be able to use both: you can configure VSCode to use the system version of PlatformIO (as opposed to its own copy) to avoid conflicts.
+>   In VSCode > main menu > File > Preferences > Settings, go to Extensions > PlatformIO IDE configuration, then uncheck "Use Builtin PIOCore" (and optionally uncheck "Use Builtin Python").
+> </details>
+
+
 ## Repository Checkout
 
-#### Please read the entire section below
-_Note:_ This repository uses Git submodules as a way to bring in external dependencies (like the mbed library) while both tracking the version used and allowing easier updates. Other than the initial clone and updates described below, it is unlikely you will need to significantly interact with the submodule system for routine development. However, there is plenty of documentation on submodules available on the Internet for those who wish to know more.
+**If you already know git:**
+You can skip this section and check out the repo.
+Make sure to initialize submodules.
+
+**This repository uses Git submodules** as a way to bring in external dependencies while both tracking the version used and allowing easier updates.
+Other than the initial clone and updates described below, it is unlikely you will need to significantly interact with the submodule system for routine development.
+However, there is plenty of documentation on submodules available on the Internet for those who wish to know more.
+
+### GitHub Desktop
+_GitHub Desktop provides a graphical user interface (GUI) for basic and common git operations, like pull, commit, and creating and switching branches._
+_Submodules are handled automatically for you._
+_Windows and Mac only._
+
+**GitHub Desktop is recommended if you prefer or are more familiar with graphical user interfaces, rather than command-line tools.**
+**The basic operations supported by GitHub Desktop are sufficient for almost all routine CalSol development.**
+
+1. Download and install [GitHub Desktop](https://desktop.github.com/).
+1. Clone this repository to desktop using the "Clone or download" button on the web interface. It should automatically launch GitHub Desktop.
+1. In the GitHub Desktop interface, you can sync the repository (push new changes to GitHub if you have the appropriate permissions, as well as pull updates from GitHub) using the "Sync" button.
 
 ### Command-line git
-_Command-line git is more powerful but also has a steep learning curve._
+_Command-line git is as powerful as git gets, but has a steeper learning curve._
+_If you intend to do software development professionally, you may eventually or occasionally need the more advanced operations provided by command-line git, even if they may not be useful for CalSol._
 
-**You'll be using git in nearly all CS/EE classes. Although it's harder to learn, you're going to have to eventually :)**
-
-1.  Command-line git should have been installed during the toolchain setup above.
+1.  Install Git:
+    - For Windows:
+      [Download and install git](https://git-scm.com/download/win), checking the "Use Git from the Windows Command Prompt" at the end of the install if you want to run git from outside Git Bash - such as from the Windows Command Prompt or PowerShell.
+    - For Mac:
+      Download and install homebrew, then
+      ```bash
+      brew install git
+      ```
+    - For Linux:
+      ```bash
+      sudo apt-get install git
+      ```
 1.  Clone (download a copy of) the repository:
 
     ```
@@ -99,223 +168,102 @@ _`--init`_ should only be used to _initialize_ the repository submodules
     - When doing commits, if it indicates that a submodule directory changed that you didn't actually change, you may have forgotten to do a `git submodule update`. Git will see that the (outdated) working directory submodule is pointing to a different commit than the one in HEAD, and interpret that as a change.
 1.  Using `git` effectively has a learning curve, but as Git is everywhere now, it's worth learning. Make sure you're familiar with Git commands like `commit`, `pull`, `push`, `merge`, `rebase`, and `cherry-pick`.
 
-## Development
-There are two options for code development: using an IDE or a text editor and command line. _We recommend a text editor because configuring Eclipse is difficult_
-- Using a text editor (Sublime, Atom, vim, emacs, Notepad++) and command line is a more bare-bones way to code. There's no additional setup, but it's a little harder to learn. See the [command-line operations section](#command-line-operations).
-- An IDE (Eclispe, IntelliJ, PyCharm, VSCode, NetBeans) gives an integrated way to code, program, and debug firmware. It requires more setup, but once done it's convinient and very powerful. _The instructions on setup will be at the bottom of the README_
 
-#### As far as text editors are concerned everyone has there own preference, but typically people use the ones listed above. If you don't have one set up already ask a returning member.
+## Reference Materials
 
-### Command-Line Operations
-_You can also flash and debug the microcontroller using command-line OpenOCD._
+### PlatformIO Binaries
+PlatformIO places built binaries (`.bin` and `.elf` files) in `.pio/build/<board name>`.
 
-In embedded programming there are two stages, building and flashing.
-1. Building converts the code files (.cpp and .h files for us) to binary files (usually one of .bin or .elf)
-2. Flashing uploads those binary files to the program memory of the microcontroller, so that later it can perform the operations.
+### OpenOCD Troubleshooting
+These are some errors (and likely causes) you may get when trying to deploy code:
 
-#### Building with SCons
+This could indicate the programming dongle isn't connected to your computer:
+```
+Error: unable to find a matching CMSIS-DAP device
+```
 
-1.  Invoke SCons in the `Tachyon-FW` folder to build all the targets.
+This could indicate that the board being flashed isn't connected to the programming dongle:
+```
+Error: Error connecting DP: cannot read IDR
+```
 
-    ```
-    scons
-    ```
+### OpenOCD Operations
+_Flashing via OpenOCD is done for you through PlatformIO upload and debug operations, which is the recommended way of deploying firmware._
+_This section contains reference commands if you need to run OpenOCD manually._
+_**This is not necessary for most people.**_
 
-    This places the build binaries (.elf and .bin files) in `build/`. SCons has built-in dependency tracking so it does a minimal incremental build.
-    - `scons -c` will clean all built targets. Or, if you prefer to be sure by nuking it from orbit, delete the `build/` directory.
-    - You can build specific files (or directories) with `scons <your/target/here>`.
-2.   Build a specific target from within the 'Tachyon-FW' folder.
+_To run OpenOCD from the command line, you may have to separately download and install it._
 
-    ```
-    scons <target>
-    ```
+#### Flashing (uploading firmware, to microcontroller)
+```
+openocd -f interface/cmsis-dap.cfg -f target/lpc1549_openocd.cfg  -c init -c halt  -c "flash erase_sector 0 0 last"  -c "flash write_image .pio/build/your_board/firmware.bin"  -c "reset run"  -c exit
+```
+Replace `your_board` with the target firmware you're trying to flash.
 
-`<target>` is the name of the build targe (i.e. `scons BMS`)
+#### Reading (downloading firmware, from microcontroller)
+```
+openocd -f interface/cmsis-dap.cfg -f target/lpc1549_openocd.cfg  -c init -c halt  -c "flash read_bank 0 dump.bin"  -c exit
+```
+Optionally, replace `dump.bin` with a different filename you want to dump firmware to.
 
-#### Flashing via SCons (with OpenOCD and CMSIS-DAP dongles)
+> <details>
+>   <summary>SYSMEMREMAP - if the first 512 bytes are corrupt</summary>
+>
+>   The LPC1549 has a SYSMEMREMAP register at 0x40074000, and if set to 0x00 the first 512 (0x200) will be that of the boot ROM instead of user flash.
+>   The LPC1549 OpenOCD script should automatically configure this register on `init`, but if you do any kind of reset post-`init`, this may be reset to the wrong value.
+>   Per the LPC1549 reference manual, this register needs to be set to 0x02 to be in User Flash Mode, where the first 512 bytes are not remapped and map directly to flash.
+>
+>   You can manually set the register with this OpenOCD command: `mww 0x40074000 0x02`. 
+>   You can also read the register with this command: `mdw 0x40074000`
+> </details>
 
-##### Please read below to understand how to program our microcontrollers.
+#### Advanced Operations
+> <details>
+>   <summary>OpenOCD Sanity Check</summary>
+>
+>   You can do a simple sanity check by launching OpenOCD with just the interface and target configuration:
+>   ```
+>   openocd -f interface/cmsis-dap.cfg -f target/lpc1549_openocd.cfg  -c init -c exit
+>   ```
+>
+>   If all worked well, you should see something ending with (may differ with different chips):
+>   ```
+>   Info : CMSIS-DAP: Interface ready
+>   Info : clock speed 10 kHz
+>   Info : SWD DPIDR 0x2ba01477
+>   Info : lpc1549.cpu: hardware has 6 breakpoints, 4 watchpoints
+>   ```
+>
+>   If you get errors, check out the troubleshooting section above.
+> </details>
 
-_SCons has build targets that invoke OpenOCD to flash hardware. These will automatically (re)compile all dependencies as needed._
-
-1.  You can see a list of all top-level build targets using:
-
-    ```
-    scons --list
-    ```
-    
-    This includes both the binary targets (like `datalogger`) as well as the flash targets (like `flash-datalogger`)
-1.  "Build" the flash target:
-
-    ```
-    scons flash-<target>
-    ```
-    
-    (replacing `target` with the name of target - so you'd run something like `scons flash-datalogger`)
-    - If all worked well, you should see something ending with:
-    
-      ```
-      ** Programming Started **
-      auto erase enabled
-      Warn : Verification will fail since checksum in image (0x00000000) to be written to flash is different from calculated vector checksum (0xfdff47b6).
-      Warn : To remove this warning modify build tools on developer PC to inject correct LPC vector checksum.
-      wrote 8192 bytes from file build/datalogger.elf in 1.080895s (7.401 KiB/s)
-      ** Programming Finished **
-      scons: done building targets.
-      ```
-      
-    - If the CMSIS-DAP dongle isn't connected to your computer, you would see an error like:
-
-      ```
-      Error: unable to find CMSIS-DAP device
-      Error: No Valid JTAG Interface Configured.
-      scons: *** [build\flash-datalogger] Error -1
-      scons: building terminated because of errors.
-      ```
-
-    - If the target board isn't connected, you might see an error like:
-
-      ```
-      in procedure 'program'
-      in procedure 'init' called at file "embedded:startup.tcl", line 495
-      in procedure 'ocd_bouncer'
-      ** OpenOCD init failed **
-      shutdown command invoked
-      
-      scons: *** [build\flash-datalogger] Error -1
-      scons: building terminated because of errors.
-      ```
-    
-## Begin Reference Material (ie only look at this stuff if you want to)
-
-#### Flashing with OpenOCD and CMSIS-DAP dongles (reference only, use SCons in practice)
-_This section is kept as a reference only, as to what the SCons flash targets do under the hood. You should use the SCons flash targets from the above section._
-
-1.  Ensure the built binaries (`.bin` files) are up to date by invoking `scons`.
-1.  Do a sanity check by launching OpenOCD with the interface and target configuration:
-
-    ```
-    openocd \
-      -f interface/cmsis-dap.cfg \
-      -f <your-target-config.cfg>
-    ```
-
-    Reaplce `<your-target-config.cfg>` with the appropriate target file. See [OpenOCD Target Configurations](#openocd-target-configurations).
-
-    - If all worked well, you should see something ending with:
-
-      ```
-      Info : CMSIS-DAP: Interface ready
-      Info : clock speed 4000 kHz
-      Info : SWD IDCODE 0x2ba01477
-      Info : lpc1549.cpu: hardware has 6 breakpoints, 4 watchpoints
-      ```
-
-      Obviously, this may vary depending on the particular chip target. At this point, OpenOCD continues running (as a server) in the foreground, waiting for interactive commands from socket connections.
-    - See the flashing with SCons section for potential error messages.
-
-1.  Without closing the running OpenOCD server, open a telnet connection to localhost:4444, the OpenOCD console.
-    1.  In the OpenOCD console, run these commands:
-
-        ```
-        reset halt
-        flash erase_sector 0 0 last
-        flash write_image <path/to/your/image.bin>
-        ```
-
-        Note that the path to the image is relatively to where the OpenOCD server is running, not where your telnet client is running.
-
-    1.  When you're ready to start your target, run this in the OpenOCD console:
-
-        ```
-        reset
-        ```
-
-    1.  When you're done, you can stop the OpenOCD server with:
-
-        ```
-        exit
-        ```
-
-    1.  This is only a small subset of commands available through OpenOCD. Those interested should read the [commands section of the official OpenOCD documentation](http://openocd.org/doc/html/General-Commands.html).
-
-1.  Instead of running commands interactively, you can also automate the above by passing in commands to run through OpenOCD's arguments:
-
-    ```
-    openocd \
-      -f interface/cmsis-dap.cfg \
-      -f <your-target-config.cfg> \
-      -c init \
-      -c "reset halt" \
-      -c "flash erase_sector 0 0 last" \
-      -c "flash write_image <path/to/your/image.bin>" \
-      -c "reset run" \
-      -c "exit"
-    ```
-
-    - Note that this immediately starts your program on the target after flashing; if you don't want this behavior, remove the `-c "reset run"` line.
-
-1.  OpenOCD integrates with command-line GDB, if that's your thing. Compared to a modern IDE, GDB has a steeper learning curve, so how to use GDB is outside the scope of this lab. However, [instructions for integrating OpenOCD and GDB are available](http://openocd.org/doc/html/GDB-and-OpenOCD.html).
-
-### OpenOCD Target Configurations
-Examples of the target config are:
-- `target/lpc11xx.cfg` for LPC11C14 targets.
-- `lpc1549_openocd.cfg` (in this repository) for LPC1549 targets.
-
-### IDE Setup
-_This section is optional, for people who want to work with an IDE and GUI debug tools._
-
-#### Installing Eclipse and add-ons 
-1.  [Download Eclipse](https://www.eclipse.org/downloads/). Eclipse IDE for C/C++ developers is a good option.
-1.  Install some Eclipse plugins:
-    - (menu) > Help > Install New Software..., then enter the update site URL in the "Work with..." field.
-    - If some components cannot be installed, you may need to update your version of Eclipse.
-    1. Install [SConsolidator](http://www.sconsolidator.com/) (update site: <http://www.sconsolidator.com/update>), which allows some integration of SCons scripts.
-    1. Install [GNU ARM on Eclipse](https://gnuarmeclipse.github.io) (update site: <http://gnuarmeclipse.sourceforge.net/updates>), which provides Eclipse program and debug integration.
-1.  Define where the OpenOCD binary can be found:
-    - (menu) > Preferences > Run/Debug > OpenOCD, set the Folder to the folder where the OpenOCD binary is located.
-
-#### Project configuration
-1.  Add this repository as a Eclipse project:
-    - (menu) > New > Project > New SCons project from existing source. Under Existing Code Location, choose the folder where you checked out this repository.
-1.  Configure the indexer to include the proper system headers for this project:
-    - Right click the project and open the Properties window, then under C/C++ General > Paths and Symbols, in the Includes tab, for both GNU C and GNU C++ languages, add the GNU ARM includes directory:
-      - Under Debian-based systems, the path is `/usr/lib/gcc/arm-none-eabi/(version)/include`.
-      - Under Windows, the default is `C:\Program Files (x86)\GNU Tools ARM Embedded\(version)\arm-none-eabi\include`.
-1.  Build the project.
-    - In the Project Explorer, right-click the Tachyon-FW project and click Build.
-    - If the build succeeded, this should create all the `.elf` files (compiled firmware) in the `build/` directory.
-    - PROTIP: you can also start a build with Ctrl+B.
-1.  Set up a debug configuration. Right-click the `.elf` file and select Debug As > Debug Configurations...
-    1.  From the list on the left side of the new window, right click GDB OpenOCD Debugging and select New.
-    1.  Under the Main tab:
-        - Give the configuration a name.
-        - Ensure the Project field matches the project name.
-        - Set the C/C++ Application to the path to the `.elf` file, like `build/oled2.elf`.
-        - If you want to auto-build before launching, set it in Build (if required) before launching, either for this debug target only, or by modifying the workspace-wide setting.
-    1.  Under the Debugging tab:
-        - Leave the default OpenOCD Setup > Executable configuration of `${openocd_path}/${openocd_executable}`.
-        - Set the GDB Client Setup > Executable to `arm-none-eabi-gdb`.
-        - Set the Config Options to include flags for interface / target configuration (`-f`), and startup commands (`-c`):
-
-          ```
-          -f interface/cmsis-dap.cfg
-          -f target/<your-target-config.cfg>
-          -c init
-          -c "reset halt"
-          ```
-
-          For target config files, see [OpenOCD Target Configurations](#openocd-target-configurations).
-
-    1.  Under the Startup tab:
-        - In Run/Restart Commands, if you want the target to start running immediately after flashing completes, disable the Set breakpoint at: option.
-    1.  Under the Common tab:
-        - If you want to launch this target from the quickbar, check the options in Display in favorites menu.
-1.  Try launching the debug target. This will flash the microcontroller and start it.
-    - If all goes well, you should be able to pause the target (and Eclipse should bring up the next line of code the microcontroller will execute). The normal debugging tools are available: step-into, step-over, step-out, breakpoints, register view, memory view, and more.
-    - PROTIP: you can launch the last debug target with Ctrl+F11.
-    - Make sure to terminate a debugging session when done. Eclipse does not allow multiple concurrent debug sessions.
-
-## Repository Maintenance
-Advanced topics for repository maintenance.
-- [Updating mbed](UPDATING-MBED.md)
+> <details>
+>   <summary>OpenOCD Interactive Console</summary>
+>
+>   OpenOCD by default runs as a telnet server in the foreground, waiting for interactive commands from socket connections:
+>   ```
+>   openocd -f interface/cmsis-dap.cfg -f target/lpc1549_openocd.cfg
+>   ```
+>
+>   You can connect to the interactive console by opening a telnet connection to `localhost:4444`.
+>   From there, you can run commands like flashing:
+>   ```
+>   halt
+>   flash erase_sector 0 0 last
+>   flash write_image .pio/build/your_board/firmware.bin
+>   ```
+>   (remember to replace `your_board` with the target firmware you're trying to flash)
+>
+>   When you're ready to start the target microcontroller, run:
+>   ```
+>   reset run
+>   ```
+>
+>   When you're done, you can stop the OpenOCD server with:
+>   ```
+>   exit
+>   ```
+>
+>   This is only a small subset of commands available through OpenOCD.
+>   Check out the [commands section of the official OpenOCD documentation](http://openocd.org/doc/html/General-Commands.html) for more.
+> </details>

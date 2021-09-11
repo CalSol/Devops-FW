@@ -9,7 +9,7 @@
 #include "MovingAverage.h"
 #include "can_buffer_timestamp.h"
 
-#include "datalogger.pb.h"
+#include "datalogger/datalogger.pb.h"
 
 DataloggerRecord timeToRecord(tm time, uint8_t sourceId, uint32_t timestampMs);
 DataloggerRecord canMessageToRecord(Timestamped_CANMessage msg, uint8_t sourceId);

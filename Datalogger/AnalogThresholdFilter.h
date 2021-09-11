@@ -16,18 +16,18 @@ public:
   AnalogThresholdFilter(Timer& timebase, bool initialValue,
       uint32_t risingThreshold, uint32_t fallingThreshold,
       uint32_t filterDelayUs) :
-      timebase_(timebase), lastValue_(initialValue), filteredValue_(initialValue),
-      risingThreshold_(risingThreshold), fallingThreshold_(fallingThreshold),
+      timebase_(timebase), risingThreshold_(risingThreshold), fallingThreshold_(fallingThreshold),
       filterRiseUs_(filterDelayUs), filterFallUs_(filterDelayUs),
-      filterUpdateTime_(0) {
+      filterUpdateTime_(0),
+      lastValue_(initialValue), filteredValue_(initialValue) {
   }
   AnalogThresholdFilter(Timer& timebase, bool initialValue,
       uint32_t risingThreshold, uint32_t fallingThreshold,
       uint32_t filterRiseUs, uint32_t filterFallUs) :
-      timebase_(timebase), lastValue_(initialValue), filteredValue_(initialValue),
-      risingThreshold_(risingThreshold), fallingThreshold_(fallingThreshold),
+      timebase_(timebase), risingThreshold_(risingThreshold), fallingThreshold_(fallingThreshold),
       filterRiseUs_(filterRiseUs), filterFallUs_(filterFallUs),
-      filterUpdateTime_(0) {
+      filterUpdateTime_(0),
+      lastValue_(initialValue), filteredValue_(initialValue) {
   }
 
   /**

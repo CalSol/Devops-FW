@@ -14,14 +14,14 @@ public:
   };
 
   DigitalFilter(Timer& timebase, bool initialValue, uint32_t filterDelayUs) :
-      timebase_(timebase), lastValue_(initialValue), filteredValue_(initialValue),
-      filterRiseUs_(filterDelayUs), filterFallUs_(filterDelayUs),
-      filterUpdateTime_(0) {
+      timebase_(timebase), filterRiseUs_(filterDelayUs), filterFallUs_(filterDelayUs),
+      filterUpdateTime_(0),
+      lastValue_(initialValue), filteredValue_(initialValue) {
   }
   DigitalFilter(Timer& timebase, bool initialValue, uint32_t filterRiseUs, uint32_t filterFallUs) :
-      timebase_(timebase), lastValue_(initialValue), filteredValue_(initialValue),
-      filterRiseUs_(filterRiseUs), filterFallUs_(filterFallUs),
-      filterUpdateTime_(0) {
+      timebase_(timebase), filterRiseUs_(filterRiseUs), filterFallUs_(filterFallUs),
+      filterUpdateTime_(0), 
+      lastValue_(initialValue), filteredValue_(initialValue) {
   }
 
   /**

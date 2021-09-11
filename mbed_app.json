@@ -1,0 +1,10 @@
+{
+    "requires": ["bare-metal", "sd", "filesystem", "fat_chan"],
+    "target_overrides": {
+        "*": {
+            "target.features_add": ["STORAGE"],
+            "target.components_add": ["SD"],
+            "platform.stdio-baud-rate": 115200
+        }
+    }
+}

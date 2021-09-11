@@ -76,7 +76,7 @@ bool DataloggerFile::newFile(const char* dirname, const char* basename) {
     file_ = NULL;
   }
 
-  char filename[21];  // 8/8.3 format, disallow LFN (Long Filename)
+  char filename[8 + 1 + 8+1+3 + 1];  // 8/8.3 format, disallow LFN (Long Filename)
   size_t dirnameLen = strlen(dirname);
   size_t basenameLen = strlen(basename);
   if (dirnameLen > 8 || basenameLen > 8) {
@@ -92,7 +92,7 @@ bool DataloggerFile::newFile(const char* dirname, const char* basename) {
   if (!filesystem_.open(&dir, dirname)) {
     debugInfo("Opened dir '%s'", dirname);
     struct dirent dirp;
-    uint32_t nextFilenameSeq = 0;
+    uint16_t nextFilenameSeq = 0;
     while (dir->read(&dirp) > 0) {
       const char* dirFilename = dirp.d_name;
       debugInfo("Found file '%s'", dirFilename);
@@ -129,7 +129,7 @@ bool DataloggerFile::newFile(const char* dirname, const char* basename) {
       filename[basenameEnd] = '_';
       size_t seqCharacters = itoaLimited(filename + basenameEnd + 1, nextFilenameSeq, maxSeqCharacters);
       if (seqCharacters == 0) {
-        debugWarn("basename '%s' too long for sequence %i", basename, nextFilenameSeq);
+        debugWarn("basename '%s' too long for sequence %u", basename, nextFilenameSeq);
         return false;
       }
       filename[basenameEnd + 1 + seqCharacters] = '\0';
@@ -237,7 +237,8 @@ bool DataloggerProtoFile::write(const DataloggerRecord record) {
       && pb_ostream_cobs_finish(&state)) {
     encodingBuffer_[0] = 0;  // state of frame delimiter
     size_t bufferSize = state.bufPos - encodingBuffer_;
-    return file_->write(encodingBuffer_, bufferSize) == bufferSize;
+    ssize_t bytesWritten = file_->write(encodingBuffer_, bufferSize);
+    return bytesWritten >= 0 && (size_t)bytesWritten == bufferSize;
   } else {
     return false;
   }
