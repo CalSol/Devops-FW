@@ -1,13 +1,12 @@
 #include <cstdio>
 
-#include <can_id.h>
-#include <can_struct.h>
-
 #include <SDBlockDevice.h>
 #include <FATFileSystem.h>
 
 #define DEBUG_ENABLED
 #include "debug.h"
+
+#include "CanStruct.h"
 
 #include "WDT.h"
 #include "AnalogPeripherals.h"
@@ -29,6 +28,13 @@
 #include "RecordEncoding.h"
 
 #include <locale>
+
+/*
+ * Local peripheral definitions
+ */
+const uint32_t CAN_FREQUENCY = 1000000;
+const uint32_t CAN_HEART_DATALOGGER = 0x049;  // heartbeat CAN ID
+const uint32_t CAN_CORE_STATUS_DATALOGGER = 0x749;  // core status CAN ID
 
 /*
  * Local peripheral definitions

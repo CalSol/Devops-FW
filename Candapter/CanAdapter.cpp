@@ -1,8 +1,5 @@
 #include <cstdio>
 
-#include <can_id.h>
-#include <can_struct.h>
-
 #define DEBUG_ENABLED
 #include "debug.h"
 
@@ -23,6 +20,11 @@
 #include "Widget.h"
 
 #include "MovingAverage.h"
+
+/*
+ * Local peripheral definitions
+ */
+const uint32_t CAN_FREQUENCY = 1000000;
 
 /*
  * Local peripheral definitions

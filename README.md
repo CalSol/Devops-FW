@@ -1,5 +1,8 @@
-# Tachyon
-This repository contains the microcontroller code for Tachyon.
+# DevOps
+This repository contains the microcontroller code for DevOps hardware.
+
+Note: this repository [imports history](https://medium.com/@ayushya/move-directory-from-one-repository-to-another-preserving-git-history-d210fa049d4b) (using [filter-repo](https://github.com/newren/git-filter-repo/)) from [Tachyon-FW](https://github.com/CalSol/Tachyon-FW).
+Commits prior to Oct 17, 2021 may reference data (eg, issue and pull request numbers) from that repository instead.
 
 **Quick References**
 - [OpenOCD Troubleshooting](#openocd-troubleshooting)
@@ -151,7 +154,7 @@ _If you intend to do software development professionally, you may eventually or 
 1.  Clone (download a copy of) the repository:
 
     ```
-    git clone --recursive https://github.com/CalSol/Tachyon-FW.git
+    git clone --recursive https://github.com/CalSol/Devops-FW.git
     ```
 
 In general the link to the repository can be found on the GitHub website for that repository.
