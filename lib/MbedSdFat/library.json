@@ -1,0 +1,22 @@
+{
+  "name": "MbedSdFat",
+  "description": "Copy of FATFileSystem SdBlockDevice from mbed, for when mbed_app.json doesn't do the right thing and you aren't using mbed os. Unmodified code, with a stubbed out rtos::ThisThread::sleep_for included. Top-level must define configurations MBED_CONF_FAT_CHAN_FF*.",
+  "frameworks": ["mbed"],
+  "version": "0.0.0",
+  "build": {
+    "includeDir": ".",
+    "flags": [
+      "-I components/storage/blockdevice/COMPONENT_SD",
+      "-I storage/blockdevice",
+      "-I storage/filesystem",
+      "-I storage/filesystem/fat",
+      "-I storage/filesystem/fat/ChaN",
+      "-I hacks"
+    ],
+    "srcDir": ".",
+    "srcFilter": [
+      "+<*>",
+      "-<components/storage/blockdevice/COMPONENT_SD/TESTS/>"
+    ]
+  }
+}
