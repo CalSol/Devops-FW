@@ -1,0 +1,9 @@
+[submodule "lib/common-proto"]
+	path = lib/common-proto
+	url = https://github.com/CALISCO/common-proto.git
+[submodule "lib/calsol-fw-libs"]
+	path = lib/calsol-fw-libs
+	url = https://github.com/CalSol/calsol-fw-libs.git
+[submodule "lib/graphics-api"]
+	path = lib/graphics-api
+	url = https://github.com/CalSol/graphics-api.git
