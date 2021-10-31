@@ -1,10 +1,13 @@
 {
     "requires": ["bare-metal", "sd", "filesystem", "fat_chan"],
     "target_overrides": {
-        "*": {
+        "LPC1549": {
             "target.features_add": ["STORAGE"],
             "target.components_add": ["SD"],
             "platform.stdio-baud-rate": 115200
+        },
+        "NRF52840_DK": {
+            "target.features_add": ["BLE"]
         }
     }
 }
