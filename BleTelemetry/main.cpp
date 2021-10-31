@@ -21,6 +21,6 @@ int main() {
     while (1) {
         Led1 = !Led1;
         Led2 = !Led1;
-        wait_ms(500);
+        wait_us(500*1000);
     }
 }
