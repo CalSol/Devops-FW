@@ -9,11 +9,8 @@
 #include "RgbActivityLed.h"
 #include "DmaSerial.h"
 
-#include "encoding.h"
-
 #include "slcan.h"
 #include "NonBlockingUsbSerial.h"
-#include "StaticQueue.h"
 
 #include "St7735sGraphics.h"
 #include "DefaultFonts.h"
@@ -46,6 +43,7 @@ CANTimestampedRxBuffer<128> CanBuffer(Can, Timestamp);
 TimerTicker CanCheckTicker(1 * 1000 * 1000, UsTimer);
 
 NonBlockingUSBSerial UsbSerial(0x1209, 0x0001, 0x0001, false);
+USBSLCANSlave Slcan(UsbSerial);
 
 //
 // Debugging defs
@@ -91,6 +89,12 @@ Widget* widMainContents[] = {&widVersionData, &widBuildData, &widCanOverview};
 VGridWidget<3> widMain(widMainContents);
 
 
+// Helper to allow the host to send CAN messages
+static bool transmitCANMessage(const CANMessage& msg) {
+  return CanBuffer.write(msg);
+}
+
+
 int main() {
   swdConsole.baud(115200);
 
@@ -106,13 +110,41 @@ int main() {
   Lcd.init();
   LcdLed = 1;
 
+  // Allow the SLCAN interface to transmit messages
+  Slcan.setTransmitHandler(&transmitCANMessage);
+
+  // Silently ignore commands to change the mode/bitrate
+  // for compatibility with USBtinViewer
+  Slcan.setIgnoreConfigCommands(true);
+
   // CAN aggregate statistics
   uint16_t thisCanRxCount = 0;
   uint16_t thisCanErrCount = 0;
   MovingAverage<uint16_t, uint32_t, 8> canRxCounter;
-  MovingAverage<uint16_t, uint32_t, 8> canErrCounter;  // TODO there should be a integrating moving average
+  MovingAverage<uint16_t, uint32_t, 8> canErrCounter;
 
   while (1) {
+    if (CanCheckTicker.checkExpired()) {
+      if (LPC_C_CAN0->CANCNTL & (1 << 0)) {
+        LPC_C_CAN0->CANCNTL &= ~(1 << 0);
+        CanStatusLed.pulse(RgbActivity::kBlue);
+      }
+    }
+
+    Timestamped_CANMessage msg;
+    while (CanBuffer.read(msg)) {
+      if (!msg.isError) {
+        Slcan.putCANMessage(msg.data.msg);
+        thisCanRxCount++;
+        widCanRx.fresh();
+        CanStatusLed.pulse(RgbActivity::kGreen);
+      } else {
+        thisCanErrCount++;
+        widCanErr.fresh();
+        CanStatusLed.pulse(RgbActivity::kRed);
+      }
+    }
+
     if (UsbSerial.connected()) {
       UsbStatusLed.setIdle(RgbActivity::kGreen);
     } else if (UsbSerial.configured()) {
@@ -125,37 +157,11 @@ int main() {
       UsbStatusLed.pulse(RgbActivity::kOff);
     }
 
-    if (CanCheckTicker.checkExpired()) {
-      if (LPC_C_CAN0->CANCNTL & (1 << 0)) {
-        LPC_C_CAN0->CANCNTL &= ~(1 << 0);
-        CanStatusLed.pulse(RgbActivity::kBlue);
-      }
-    }
-
-    Timestamped_CANMessage msg;
-    while (CanBuffer.read(msg)) {
-      if (msg.isError) {
-        thisCanErrCount++;
-        widCanErr.fresh();
-        CanStatusLed.pulse(RgbActivity::kRed);
-      } else {
-        if (UsbSerial.connected()) {
-          uint8_t buffer[TachyonEncoding::MAX_ENCODED_SIZE];
-          uint32_t len = TachyonEncoding::encode(msg.data.msg, buffer);
-
-          if (UsbSerial.writeBlockNB(buffer, len)) {
-            UsbStatusLed.pulse(RgbActivity::kYellow);
-            UsbStatusTicker.reset();
-          } else {
-            UsbStatusLed.pulse(RgbActivity::kRed);
-            UsbStatusTicker.reset();
-          }
-        }
-
-        thisCanRxCount++;
-        widCanRx.fresh();
-        CanStatusLed.pulse(RgbActivity::kGreen);
-      }
+    // TODO USB activity lights, but as currently SLCAN completely encapsulates the USB interface
+    if (UsbSerial.connected()) {
+      Slcan.update();
+    } else {
+      Slcan.reset();
     }
 
     UsbStatusLed.update();
