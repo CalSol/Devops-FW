@@ -7,9 +7,11 @@
 
 #include "RgbActivityLed.h"
 #include "DmaSerial.h"
+#include "LongTimer.h"
 
-#include "NonBlockingUsbSerial.h"
-#include "StaticQueue.h"
+#include "St7735sGraphics.h"
+#include "DefaultFonts.h"
+#include "Widget.h"
 
 /*
  * Local peripheral definitions
@@ -26,15 +28,15 @@ DmaSerial<1024> swdConsole(P0_8, NC, 115200);  // TODO increase size when have m
 //
 // Comms interfaces
 //
-NonBlockingUSBSerial UsbSerial(0x1209, 0x0001, 0x0001, false);
+// USB goes here
 
 //
 // Debugging defs
 //
-SPI LcdSpi(P0_3, NC, P0_6);  // mosi, miso, sclk
-DigitalOut LcdCs(P0_13);
-DigitalOut LcdRs(P0_11);
-DigitalOut LcdReset(P0_10);
+// SPI LcdSpi(P0_3, NC, P0_6);  // mosi, miso, sclk
+// DigitalOut LcdCs(P0_13);
+// DigitalOut LcdRs(P0_11);
+// DigitalOut LcdReset(P0_10);
 
 DigitalOut LedR(P0_29), LedG(P0_28), LedB(P0_27);
 RgbActivityDigitalOut StatusLed(UsTimer, LedR, LedG, LedB, false);
@@ -43,7 +45,7 @@ TimerTicker LedStatusTicker(1 * 1000 * 1000, UsTimer);
 //
 // LCD and widgets
 //
-St7735sGraphics<160, 80, 1, 26> Lcd(LcdSpi, LcdCs, LcdRs, LcdReset);
+// St7735sGraphics<160, 80, 1, 26> Lcd(LcdSpi, LcdCs, LcdRs, LcdReset);
 
 
 int main() {
@@ -58,20 +60,26 @@ int main() {
 
   UsTimer.start();
 
-  Lcd.init();
-  LcdLed = 1;
+  // Lcd.init();
 
+uint8_t i = 0;
   while (1) {
+
     if (LedStatusTicker.checkExpired()) {
-      StatusLed.pulse(RgbActivity::kGreen);
+      if (i == 0) {
+        StatusLed.pulse(RgbActivity::kRed);
+      } else if (i == 1) {
+        StatusLed.pulse(RgbActivity::kGreen);
+      } else if (i == 2) {
+        StatusLed.pulse(RgbActivity::kBlue);
+      }
+      i = (i + 1) % 3;
     }
 
-    UsbStatusLed.update();
+    StatusLed.update();
 
-    if (LcdTicker.checkExpired()) {
-      widMain.layout();
-      widMain.draw(Lcd, 0, 0);
-      Lcd.update();
-    }
+    // if (LcdTicker.checkExpired()) {
+    //   Lcd.update();
+    // }
   }
 }
