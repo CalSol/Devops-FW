@@ -31,13 +31,12 @@ NonBlockingUSBSerial UsbSerial(0x1209, 0x0001, 0x0001, false);
 //
 // Debugging defs
 //
-SPI LcdSpi(P0_11, NC, P0_13);  // mosi, miso, sclk
-DigitalOut LcdCs(P0_14);
-DigitalOut LcdRs(P0_10);
-DigitalOut LcdReset(P0_18);
-DigitalOut LcdLed(P0_15);
+SPI LcdSpi(P0_3, NC, P0_6);  // mosi, miso, sclk
+DigitalOut LcdCs(P0_13);
+DigitalOut LcdRs(P0_11);
+DigitalOut LcdReset(P0_10);
 
-DigitalOut LedR(P0_1), LedG(P0_0), LedB(P0_2);
+DigitalOut LedR(P0_29), LedG(P0_28), LedB(P0_27);
 RgbActivityDigitalOut StatusLed(UsTimer, LedR, LedG, LedB, false);
 TimerTicker LedStatusTicker(1 * 1000 * 1000, UsTimer);
 
@@ -64,7 +63,7 @@ int main() {
 
   while (1) {
     if (LedStatusTicker.checkExpired()) {
-      
+      StatusLed.pulse(RgbActivity::kGreen);
     }
 
     UsbStatusLed.update();
