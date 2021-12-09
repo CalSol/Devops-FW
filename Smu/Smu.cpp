@@ -30,7 +30,7 @@ DmaSerial<1024> swdConsole(P0_8, NC, 115200);  // TODO increase size when have m
 //
 // Comms interfaces
 //
-USBSerial UsbSerial;
+// USBSerial UsbSerial;
 
 //
 // System
@@ -76,18 +76,18 @@ const uint8_t kContrastBackground = 191;
 TextWidget widVersionData("USB PD SMU ", 0, Font5x7, kContrastActive);
 TextWidget widBuildData("  " __DATE__ " " __TIME__, 0, Font5x7, kContrastBackground);
 
-StaleNumericTextWidget widMeasV(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale);
+StaleNumericTextWidget widMeasV(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 3);
 LabelFrameWidget widMeasVFrame(&widMeasV, "MEAS V", Font3x5, kContrastBackground);
-StaleNumericTextWidget widMeasI(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale);
+StaleNumericTextWidget widMeasI(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 3);
 LabelFrameWidget widMeasIFrame(&widMeasI, "MEAS I", Font3x5, kContrastBackground);
 Widget* widMeasContents[] = {&widMeasVFrame, &widMeasIFrame};
 HGridWidget<2> widMeas(widMeasContents);
 
-StaleNumericTextWidget widSetV(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale);
+StaleNumericTextWidget widSetV(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 3);
 LabelFrameWidget widSetVFrame(&widSetV, "V", Font3x5, kContrastBackground);
-StaleNumericTextWidget widSetISrc(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale);
+StaleNumericTextWidget widSetISrc(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 3);
 LabelFrameWidget widSetISrcFrame(&widSetISrc, "I SRC", Font3x5, kContrastBackground);
-StaleNumericTextWidget widSetISnk(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale);
+StaleNumericTextWidget widSetISnk(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 3);
 LabelFrameWidget widSetISnkFrame(&widSetISnk, "I SNK", Font3x5, kContrastBackground);
 Widget* widSetContents[] = {&widSetVFrame, &widSetISrcFrame, &widSetISnkFrame};
 HGridWidget<3> widSet(widSetContents);
@@ -97,6 +97,9 @@ LabelFrameWidget widBtnsFrame(&widBtns, "BTNS", Font3x5, kContrastBackground);
 
 Widget* widMainContents[] = {&widVersionData, &widBuildData, &widMeas, &widSet, &widBtnsFrame};
 VGridWidget<5> widMain(widMainContents);
+
+int32_t kVoltRatio = 22148;  // 1000x, actually ~22.148 Vout / Vmeas
+int32_t kAmpRatio = 10000;  // 1000x, actually 10 Aout / Vmeas
 
 int main() {
   swdConsole.baud(115200);
@@ -134,20 +137,24 @@ uint8_t i = 0;
       AdcVoltCs = 0;
       uint8_t adcv0 = SharedSpi.write(0);
       uint8_t adcv1 = SharedSpi.write(0);
-      uint16_t adcv = ((uint16_t)(adcv0 & 0x0f) << 8) | adcv1;
+      // first two clocks are for sampling, then one null bit, then data
+      // and last bit (in a 16 bit transfer) is unused
+      uint16_t adcv = (((uint16_t)(adcv0 & 0x1f) << 8) | adcv1) >> 1;
+      int32_t measMv = ((int32_t)adcv - 2048) * 3000 * kVoltRatio / 1000 / 4096;  // in mV
       AdcVoltCs = 1;
       
       AdcCurrCs = 0;
       uint8_t adci0 = SharedSpi.write(0);
       uint8_t adci1 = SharedSpi.write(0);
-      uint16_t adci = ((uint16_t)(adci0 & 0x0f) << 8) | adci1;
+      uint16_t adci = (((uint16_t)(adci0 & 0x1f) << 8) | adci1) >> 1;
+      int32_t measMa = ((int32_t)adci - 2048) * 3000 * kAmpRatio / 1000 / 4096;  // in mA
       AdcCurrCs = 1;
 
       SharedSpi.frequency(10000000);
 
-      widMeasV.setValue(adcv);
-      widMeasI.setValue(adci);
-      debugInfo("MeasV: %u    MeasI: %u\n", adcv, adci)
+      widMeasV.setValue(measMv);
+      widMeasI.setValue(measMa);
+      debugInfo("MeasV: %u => %li mV    MeasI: %u => %li mA", adcv, measMv, adci, measMa)
 
       char btnsText[] = "U U U";
       if (SwitchL == 0) {
