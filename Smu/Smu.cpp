@@ -44,8 +44,8 @@ DigitalOut AdcVoltCs(P0_7, 1);
 DigitalOut AdcCurrCs(P0_9, 1);
 DigitalOut DacVoltCs(P0_18, 1);
 
-DigitalOut EnableLow(P0_14);
-DigitalOut EnableHigh(P0_15);
+DigitalOut EnableHigh(P0_15);  // Current source transistor enable
+DigitalOut EnableLow(P0_14);  // Current sink transistor enable
 
 //
 // User interface
@@ -140,21 +140,51 @@ uint8_t i = 0;
       // first two clocks are for sampling, then one null bit, then data
       // and last bit (in a 16 bit transfer) is unused
       uint16_t adcv = (((uint16_t)(adcv0 & 0x1f) << 8) | adcv1) >> 1;
-      int32_t measMv = ((int32_t)adcv - 2048) * 3000 * kVoltRatio / 1000 / 4096;  // in mV
+      int32_t measMv = ((int64_t)adcv - 2048) * 3000 * kVoltRatio / 1000 / 4096;  // in mV
       AdcVoltCs = 1;
       
       AdcCurrCs = 0;
       uint8_t adci0 = SharedSpi.write(0);
       uint8_t adci1 = SharedSpi.write(0);
       uint16_t adci = (((uint16_t)(adci0 & 0x1f) << 8) | adci1) >> 1;
-      int32_t measMa = ((int32_t)adci - 2048) * 3000 * kAmpRatio / 1000 / 4096;  // in mA
+      int32_t measMa = ((int64_t)adci - 2048) * 3000 * kAmpRatio / 1000 / 4096;  // in mA
       AdcCurrCs = 1;
+
+      int32_t targetV = 420;  // mV
+      int32_t setVOffset = (int64_t)targetV * 4096 * 1000 / kVoltRatio / 3000;
+      uint16_t setV = 2048 - setVOffset;
+      DacVoltCs = 0;
+      SharedSpi.write(0x30 | ((setV >> 8) & 0x0f));
+      SharedSpi.write(setV & 0xff);
+      DacVoltCs = 1;
+
+      int32_t targetISrc = 200;  // mA
+      int32_t setISrcOffset = (int64_t)targetISrc * 4096 * 1000 / kAmpRatio / 3000;
+      uint16_t setISrc = 2048 - setISrcOffset;
+      DacCurrPosCs = 0;
+      SharedSpi.write(0x30 | ((setISrc >> 8) & 0x0f));
+      SharedSpi.write(setISrc & 0xff);
+      DacCurrPosCs = 1;
+
+      int32_t targetISnk = -400;  // mA
+      int32_t setISnkOffset = (int64_t)targetISnk * 4096 * 1000 / kAmpRatio / 3000;
+      uint16_t setISnk = 2048 - setISnkOffset;
+      DacCurrNegCs = 0;
+      SharedSpi.write(0x30 | ((setISnk >> 8) & 0x0f));
+      SharedSpi.write(setISnk & 0xff);
+      DacCurrNegCs = 1;
+
+      DacLdac = 0;
+      EnableHigh = 1;
+      EnableLow = 1;
 
       SharedSpi.frequency(10000000);
 
       widMeasV.setValue(measMv);
       widMeasI.setValue(measMa);
-      debugInfo("MeasV: %u => %li mV    MeasI: %u => %li mA", adcv, measMv, adci, measMa)
+      debugInfo("MeasV: %u => %li mV    MeasI: %u => %li mA    SetV: %u    SetISrc: %u    SetISnk %u", 
+          adcv, measMv, adci, measMa, 
+          setV, setISrc, setISnk)
 
       char btnsText[] = "U U U";
       if (SwitchL == 0) {
