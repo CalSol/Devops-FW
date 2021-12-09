@@ -37,12 +37,12 @@ USBSerial UsbSerial;
 //
 SPI SharedSpi(P0_3, P0_5, P0_6);  // mosi, miso, sclk
 
-DigitalOut DacLdac(P0_0);
-DigitalOut DacCurrNegCs(P0_1);
-DigitalOut DacCurrPosCs(P0_2);
-DigitalOut AdcVoltCs(P0_7);
-DigitalOut AdcCurrCs(P0_9);
-DigitalOut DacVoltCs(P0_18);
+DigitalOut DacLdac(P0_0, 1);
+DigitalOut DacCurrNegCs(P0_1, 1);
+DigitalOut DacCurrPosCs(P0_2, 1);
+DigitalOut AdcVoltCs(P0_7, 1);
+DigitalOut AdcCurrCs(P0_9, 1);
+DigitalOut DacVoltCs(P0_18, 1);
 
 DigitalOut EnableLow(P0_14);
 DigitalOut EnableHigh(P0_15);
@@ -50,9 +50,9 @@ DigitalOut EnableHigh(P0_15);
 //
 // User interface
 //
-DigitalOut LcdCs(P0_13);
+DigitalOut LcdCs(P0_13, 1);
 DigitalOut LcdRs(P0_11);
-DigitalOut LcdReset(P0_10);
+DigitalOut LcdReset(P0_10, 0);
 
 DigitalOut LedR(P0_29), LedG(P0_28), LedB(P0_27);
 RgbActivityDigitalOut StatusLed(UsTimer, LedR, LedG, LedB, false);
@@ -124,15 +124,31 @@ uint8_t i = 0;
         StatusLed.pulse(RgbActivity::kBlue);
       }
       i = (i + 1) % 3;
-
-      if (UsbSerial.configured()) {
-        UsbSerial.puts("hb");
-      }
     }
 
     StatusLed.update();
 
     if (LcdUpdateTicker.checkExpired()) {
+      SharedSpi.frequency(100000);
+      SharedSpi.format(8, 0);
+      AdcVoltCs = 0;
+      uint8_t adcv0 = SharedSpi.write(0);
+      uint8_t adcv1 = SharedSpi.write(0);
+      uint16_t adcv = ((uint16_t)(adcv0 & 0x0f) << 8) | adcv1;
+      AdcVoltCs = 1;
+      
+      AdcCurrCs = 0;
+      uint8_t adci0 = SharedSpi.write(0);
+      uint8_t adci1 = SharedSpi.write(0);
+      uint16_t adci = ((uint16_t)(adci0 & 0x0f) << 8) | adci1;
+      AdcCurrCs = 1;
+
+      SharedSpi.frequency(10000000);
+
+      widMeasV.setValue(adcv);
+      widMeasI.setValue(adci);
+      debugInfo("MeasV: %u    MeasI: %u\n", adcv, adci)
+
       char btnsText[] = "U U U";
       if (SwitchL == 0) {
         btnsText[0] = 'D';
