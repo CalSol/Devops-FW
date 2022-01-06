@@ -13,6 +13,7 @@
 
 #include "Mcp3201.h"
 #include "Mcp4921.h"
+#include "Fusb302.h"
 
 #include "St7735sGraphics.h"
 #include "DefaultFonts.h"
@@ -59,6 +60,10 @@ DigitalOut EnableLow(P0_14);  // Current sink transistor enable
 uint16_t kAdcCenter = 2042;  // Measured center value of the ADC
 uint16_t kDacCenter = 2048;  // Empirically derived center value of the DAC
 // TODO also needs a linear calibration constant?
+
+DigitalIn PdInt(P0_17);
+I2C SharedI2c(P0_23, P0_22);  // sda, scl
+Fusb302 UsbPd(SharedI2c, PdInt);
 
 //
 // User interface
@@ -135,8 +140,11 @@ HGridWidget<3> widSet(widSetContents);
 TextWidget widBtns("U U U", 5, Font5x7, kContrastActive);
 LabelFrameWidget widBtnsFrame(&widBtns, "BTNS", Font3x5, kContrastBackground);
 
-Widget* widMainContents[] = {&widVersionData, &widBuildData, &widMeas, &widSet, &widBtnsFrame};
-VGridWidget<5> widMain(widMainContents);
+NumericTextWidget pdStatus(0, 4, Font3x5, kContrastStale);
+LabelFrameWidget pdStatusFrame(&pdStatus, "USB PD", Font3x5, kContrastBackground);
+
+Widget* widMainContents[] = {&widVersionData, &widBuildData, &widMeas, &widSet, &widBtnsFrame, &pdStatusFrame};
+VGridWidget<6> widMain(widMainContents);
 
 int32_t kVoltRatio = 22148;  // 1000x, actually ~22.148 Vout / Vmeas
 int32_t kAmpRatio = 10000;  // 1000x, actually 10 Aout / Vmeas
@@ -155,7 +163,15 @@ int main() {
 
   Lcd.init();
 
-uint8_t i = 0;
+  
+  uint8_t pdId;
+  if (!UsbPd.readId(pdId)) {
+    debugInfo("PD read ID = %02x", pdId);
+  } else {
+    debugInfo("PD read fail");
+  }
+
+  uint8_t i = 0;
   while (1) {
 
     if (LedStatusTicker.checkExpired()) {
