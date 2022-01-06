@@ -61,7 +61,7 @@ uint16_t kAdcCenter = 2042;  // Measured center value of the ADC
 uint16_t kDacCenter = 2048;  // Empirically derived center value of the DAC
 // TODO also needs a linear calibration constant?
 
-DigitalIn PdInt(P0_17);
+DigitalIn PdInt(P0_17, PinMode::PullUp);
 I2C SharedI2c(P0_23, P0_22);  // sda, scl
 Fusb302 UsbPd(SharedI2c, PdInt);
 
@@ -164,11 +164,32 @@ int main() {
   Lcd.init();
 
   
-  uint8_t pdId;
-  if (!UsbPd.readId(pdId)) {
-    debugInfo("PD read ID = %02x", pdId);
+  SharedI2c.frequency(400000);
+
+  uint8_t regOut;
+  if (!UsbPd.readId(regOut)) {
+    debugInfo("PD ID read = %02x", regOut);
   } else {
-    debugInfo("PD read fail");
+    debugInfo("PD ID read fail");
+  }
+  wait_ns(500);  // 0.5us between start and stops
+
+  int ret;
+  ret = UsbPd.writeRegister(Fusb302::Register::kReset, 0x01);  // reset everything
+  if (ret) { 
+    debugInfo("PD Reset Set Fail: %i", ret);
+  }
+  wait_ns(500);  // 0.5us between start and stops
+
+  ret = UsbPd.writeRegister(Fusb302::Register::kPower, 0x0f);  // power up everything
+  if (ret) {
+    debugInfo("PD Power Set Fail: %i", ret);
+  }
+  wait_ns(500);  // 0.5us between start and stops
+
+  ret = UsbPd.writeRegister(Fusb302::Register::kControl0, 0x04);  // unmask interrupts
+  if (ret) {
+    debugInfo("PD Control0 Set Fail: %i", ret);
   }
 
   uint8_t i = 0;
@@ -188,6 +209,20 @@ int main() {
     StatusLed.update();
 
     if (LcdUpdateTicker.checkExpired()) {
+      if (PdInt == 0) {
+        uint8_t pdStatus[7];
+        if (!UsbPd.readRegister(Fusb302::Register::kStatus0a, 7, pdStatus)) {
+          debugInfo("PD Status 0A/1A  0x %02x %02x", pdStatus[0], pdStatus[1]);
+          debugInfo("PD Interrupt A/B 0x %02x %02x", pdStatus[2], pdStatus[3]);
+          debugInfo("PD Status 0/1    0x %02x %02x", pdStatus[4], pdStatus[5]);
+          debugInfo("PD Interrupt     0x %02x", pdStatus[6]);
+        } else {
+          debugInfo("PD Status Fail");
+        }
+      }
+
+
+
       DacLdac = 1;
 
       SharedSpi.frequency(100000);
@@ -230,9 +265,9 @@ int main() {
 
       SharedSpi.frequency(10000000);
 
-      debugInfo("MeasV: %u => %li mV    MeasI: %u => %li mA    SetV: %u    SetISrc: %u    SetISnk %u", 
-          adcv, measMv, adci, measMa, 
-          setV, setISrc, setISnk)
+      // debugInfo("MeasV: %u => %li mV    MeasI: %u => %li mA    SetV: %u    SetISrc: %u    SetISnk %u", 
+      //     adcv, measMv, adci, measMa, 
+      //     setV, setISrc, setISnk)
 
       char btnsText[] = "U U U";
       if (SwitchL == 0) {
