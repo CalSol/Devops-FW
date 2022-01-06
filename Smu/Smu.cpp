@@ -11,6 +11,9 @@
 #include "DmaSerial.h"
 #include "LongTimer.h"
 
+#include "Mcp3201.h"
+#include "Mcp4921.h"
+
 #include "St7735sGraphics.h"
 #include "DefaultFonts.h"
 #include "Widget.h"
@@ -39,17 +42,23 @@ SPI SharedSpi(P0_3, P0_5, P0_6);  // mosi, miso, sclk
 
 DigitalOut DacLdac(P0_0, 1);
 DigitalOut DacCurrNegCs(P0_1, 1);
+// Mcp4921 DacCurrNeg(SharedSpi, DigitalOut(P0_1, 1));
+Mcp4921 DacCurrNeg(SharedSpi, DacCurrNegCs);
 DigitalOut DacCurrPosCs(P0_2, 1);
+Mcp4921 DacCurrPos(SharedSpi, DacCurrPosCs);
 DigitalOut AdcVoltCs(P0_7, 1);
+Mcp3201 AdcVolt(SharedSpi, AdcVoltCs);
 DigitalOut AdcCurrCs(P0_9, 1);
+Mcp3201 AdcCurr(SharedSpi, AdcCurrCs);
 DigitalOut DacVoltCs(P0_18, 1);
+Mcp4921 DacVolt(SharedSpi, DacVoltCs);
 
 DigitalOut EnableHigh(P0_15);  // Current source transistor enable
 DigitalOut EnableLow(P0_14);  // Current sink transistor enable
 
 uint16_t kAdcCenter = 2042;  // Measured center value of the ADC
 uint16_t kDacCenter = 2048;  // Empirically derived center value of the DAC
-// uint16_t kDacCenter = 2048;
+// TODO also needs a linear calibration constant?
 
 //
 // User interface
@@ -166,52 +175,37 @@ uint8_t i = 0;
       DacLdac = 1;
 
       SharedSpi.frequency(100000);
-      SharedSpi.format(8, 0);
-      AdcVoltCs = 0;
-      uint8_t adcv0 = SharedSpi.write(0);
-      uint8_t adcv1 = SharedSpi.write(0);
-      // first two clocks are for sampling, then one null bit, then data
-      // and last bit (in a 16 bit transfer) is unused
-      uint16_t adcv = (((uint16_t)(adcv0 & 0x1f) << 8) | adcv1) >> 1;
-      int32_t measMv = ((int64_t)adcv - kAdcCenter) * 3000 * kVoltRatio / 1000 / 4096;  // in mV
-      AdcVoltCs = 1;
       
-      AdcCurrCs = 0;
-      uint8_t adci0 = SharedSpi.write(0);
-      uint8_t adci1 = SharedSpi.write(0);
-      uint16_t adci = (((uint16_t)(adci0 & 0x1f) << 8) | adci1) >> 1;
-      int32_t measMa = ((int64_t)adci - kAdcCenter) * 3000 * kAmpRatio / 1000 / 4096;  // in mA
-      AdcCurrCs = 1;
+      uint16_t adcv = AdcVolt.read_raw_u12();
+      int32_t measMv = ((int64_t)adcv - kAdcCenter) * 3000 * kVoltRatio / 1000 / 4096;  // in mV
+      widAdcV.setValue(adcv);
+      widMeasV.setValue(measMv);
 
-      int32_t targetV = 2500;  // mV
+      uint16_t adci = AdcCurr.read_raw_u12();
+      int32_t measMa = ((int64_t)adci - kAdcCenter) * 3000 * kAmpRatio / 1000 / 4096;  // in mA
+      widAdcI.setValue(adci);
+      widMeasI.setValue(measMa);
+
+      int32_t targetV = 1250;  // mV
       int32_t setVOffset = (int64_t)targetV * 4096 * 1000 / kVoltRatio / 3000;
       uint16_t setV = kDacCenter - setVOffset;
-      DacVoltCs = 0;
-      SharedSpi.write(0x30 | ((setV >> 8) & 0x0f));
-      SharedSpi.write(setV & 0xff);
-      DacVoltCs = 1;
-      widSetV.setValue(targetV);
+      DacVolt.write_raw_u12(setV);
       widDacV.setValue(setV);
+      widSetV.setValue(targetV);
 
       int32_t targetISrc = 200;  // mA
       int32_t setISrcOffset = (int64_t)targetISrc * 4096 * 1000 / kAmpRatio / 3000;
       uint16_t setISrc = kDacCenter - setISrcOffset;
-      DacCurrPosCs = 0;
-      SharedSpi.write(0x30 | ((setISrc >> 8) & 0x0f));
-      SharedSpi.write(setISrc & 0xff);
-      DacCurrPosCs = 1;
-      widSetISrc.setValue(targetISrc);
+      DacCurrPos.write_raw_u12(setISrc);
       widDacISrc.setValue(setISrc);
+      widSetISrc.setValue(targetISrc);
 
       int32_t targetISnk = -400;  // mA
       int32_t setISnkOffset = (int64_t)targetISnk * 4096 * 1000 / kAmpRatio / 3000;
       uint16_t setISnk = kDacCenter - setISnkOffset;
-      DacCurrNegCs = 0;
-      SharedSpi.write(0x30 | ((setISnk >> 8) & 0x0f));
-      SharedSpi.write(setISnk & 0xff);
-      DacCurrNegCs = 1;
-      widSetISnk.setValue(targetISnk);
+      DacCurrNeg.write_raw_u12(setISnk);
       widDacISnk.setValue(setISnk);
+      widSetISnk.setValue(targetISnk);
 
       DacLdac = 0;
 
@@ -220,10 +214,6 @@ uint8_t i = 0;
 
       SharedSpi.frequency(10000000);
 
-      widAdcV.setValue(adcv);
-      widAdcI.setValue(adci);
-      widMeasV.setValue(measMv);
-      widMeasI.setValue(measMa);
       debugInfo("MeasV: %u => %li mV    MeasI: %u => %li mA    SetV: %u    SetISrc: %u    SetISnk %u", 
           adcv, measMv, adci, measMa, 
           setV, setISrc, setISnk)
