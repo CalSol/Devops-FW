@@ -176,11 +176,17 @@ int main() {
   wait_ns(500);  // 0.5us between start and stops
 
   int ret;
-  ret = UsbPd.writeRegister(Fusb302::Register::kReset, 0x01);  // reset everything
-  if (ret) { 
-    debugInfo("PD Reset Set Fail: %i", ret);
-  }
-  wait_ns(500);  // 0.5us between start and stops
+  // ret = UsbPd.writeRegister(Fusb302::Register::kReset, 0x01);  // reset everything
+  // if (ret) { 
+  //   debugInfo("PD Reset Set Fail: %i", ret);
+  // }
+  // wait_ns(500);  // 0.5us between start and stops
+
+  // ret = UsbPd.writeRegister(Fusb302::Register::kReset, 0x00);  // reset everything
+  // if (ret) { 
+  //   debugInfo("PD Reset Clear Fail: %i", ret);
+  // }
+  // wait_ns(500);  // 0.5us between start and stops
 
   ret = UsbPd.writeRegister(Fusb302::Register::kPower, 0x0f);  // power up everything
   if (ret) {
@@ -194,16 +200,29 @@ int main() {
   }
   wait_ns(500);  // 0.5us between start and stops
 
-  ret = UsbPd.writeRegister(Fusb302::Register::kSwitches1, 0x24);  // enable auto-CRC + transmitter
+  ret = UsbPd.writeRegister(Fusb302::Register::kSwitches0, 0x07);  // meas CC1
+  if (ret) {
+    debugInfo("PD Switches0 Set Fail: %i", ret);
+  }
+  wait_ns(500);  // 0.5us between start and stops
+
+  ret = UsbPd.writeRegister(Fusb302::Register::kSwitches1, 0x25);  // enable auto-CRC + transmitter CC1
   if (ret) {
     debugInfo("PD Switches1 Set Fail: %i", ret);
   }
   wait_ns(500);  // 0.5us between start and stops
 
-  ret = UsbPd.writeRegister(Fusb302::Register::kControl3, 0x47);  // send hard reset packet, enable auto-retry
+  ret = UsbPd.writeRegister(Fusb302::Register::kControl3, 0x07);  // enable auto-retry
   if (ret) {
-    debugInfo("PD Hard Reset Fail: %i", ret);
+    debugInfo("PD AutoRetry Fail: %i", ret);
   }
+  wait_ns(500);  // 0.5us between start and stops
+
+  ret = UsbPd.writeRegister(Fusb302::Register::kReset, 0x02);  // reset PD logic
+  if (ret) { 
+    debugInfo("PD Reset Fail: %i", ret);
+  }
+  wait_ns(500);  // 0.5us between start and stops
 
   wait_ms(100);
 
@@ -258,6 +277,11 @@ int main() {
       payload[8] = Fusb302::kFifoTokens::kEop;
       payload[9] = Fusb302::kFifoTokens::kTxOff;
       payload[10] = Fusb302::kFifoTokens::kTxOn;
+      debugInfo("%02x %02x %02x %02x  %02x  %02x %02x  %02x %02x %02x  %02x", 
+          payload[0], payload[1], payload[2], payload[3],
+          payload[4],
+          payload[5], payload[6],
+          payload[7], payload[8], payload[9], payload[10]);
 
       ret = UsbPd.writeRegister(Fusb302::Register::kFifos, 11, payload);
       if (ret) {
@@ -269,7 +293,6 @@ int main() {
       if (ret) {
         debugInfo("PD TX Start: %i", ret);
       }
-
       wait_ns(500);
 
       uint8_t pdStatus[2];

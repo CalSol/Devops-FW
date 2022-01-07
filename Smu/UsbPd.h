@@ -33,7 +33,7 @@ public:
   };
   enum PortDataRole {
     kUfp = 0,
-    kDsp = 1,
+    kDfp = 1,
   };
   enum SpecificationRevision {
     kRevision1_0 = 0,
@@ -45,12 +45,12 @@ public:
   // Masks an input value to the specified number of bits, the shifts it.
   // Used as a component in packing messages.
   static constexpr inline uint16_t maskAndShift(uint16_t data, uint8_t maskBits, uint8_t shiftBits) {
-    return data & ((1 << maskBits) - 1) << shiftBits;
+    return (data & ((1 << maskBits) - 1)) << shiftBits;
   }
 
   static uint16_t makeHeader(ControlMessageType messageType, uint8_t numDataObjects, uint8_t messageId, 
       PortPowerRole powerRole = PortPowerRole::kSink, PortDataRole dataRole = PortDataRole::kUfp,
-      SpecificationRevision spec = SpecificationRevision::kRevision3_0) {
+      SpecificationRevision spec = SpecificationRevision::kRevision2_0) {
     return maskAndShift(numDataObjects, 3, 12) |
         maskAndShift(messageId, 3, 9) |
         maskAndShift(powerRole, 1, 8) |
