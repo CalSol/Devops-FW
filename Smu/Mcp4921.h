@@ -3,6 +3,7 @@
 #ifndef __MCP4921_H__
 #define __MCP4921_H__
 
+
 // MCP4921 12-bit SPI DAC
 class Mcp4921 {
 public:

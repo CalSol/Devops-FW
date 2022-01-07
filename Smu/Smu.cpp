@@ -14,6 +14,7 @@
 #include "Mcp3201.h"
 #include "Mcp4921.h"
 #include "Fusb302.h"
+#include "UsbPd.h"
 
 #include "St7735sGraphics.h"
 #include "DefaultFonts.h"
@@ -191,10 +192,25 @@ int main() {
   if (ret) {
     debugInfo("PD Control0 Set Fail: %i", ret);
   }
+  wait_ns(500);  // 0.5us between start and stops
+
+  ret = UsbPd.writeRegister(Fusb302::Register::kSwitches1, 0x24);  // enable auto-CRC + transmitter
+  if (ret) {
+    debugInfo("PD Switches1 Set Fail: %i", ret);
+  }
+  wait_ns(500);  // 0.5us between start and stops
+
+  ret = UsbPd.writeRegister(Fusb302::Register::kControl3, 0x47);  // send hard reset packet, enable auto-retry
+  if (ret) {
+    debugInfo("PD Hard Reset Fail: %i", ret);
+  }
+
+  wait_ms(100);
+
+  TimerTicker PdSendTicker(1000 * 1000, UsTimer);
 
   uint8_t i = 0;
   while (1) {
-
     if (LedStatusTicker.checkExpired()) {
       if (i == 0) {
         StatusLed.pulse(RgbActivity::kRed);
@@ -208,21 +224,66 @@ int main() {
 
     StatusLed.update();
 
-    if (LcdUpdateTicker.checkExpired()) {
-      if (PdInt == 0) {
-        uint8_t pdStatus[7];
-        if (!UsbPd.readRegister(Fusb302::Register::kStatus0a, 7, pdStatus)) {
-          debugInfo("PD Status 0A/1A  0x %02x %02x", pdStatus[0], pdStatus[1]);
-          debugInfo("PD Interrupt A/B 0x %02x %02x", pdStatus[2], pdStatus[3]);
-          debugInfo("PD Status 0/1    0x %02x %02x", pdStatus[4], pdStatus[5]);
-          debugInfo("PD Interrupt     0x %02x", pdStatus[6]);
-        } else {
-          debugInfo("PD Status Fail");
-        }
+    if (PdInt == 0) {
+      uint8_t pdStatus[7];
+      debugInfo("PD Int");
+      if (!(ret = UsbPd.readRegister(Fusb302::Register::kStatus0a, 7, pdStatus))) {
+        debugInfo("PD Status 0A/1A  0x %02x %02x", pdStatus[0], pdStatus[1]);
+        debugInfo("PD Interrupt A/B 0x %02x %02x", pdStatus[2], pdStatus[3]);
+        debugInfo("PD Status 0/1    0x %02x %02x", pdStatus[4], pdStatus[5]);
+        debugInfo("PD Interrupt     0x %02x", pdStatus[6]);
+      } else {
+        debugInfo("PD Status Fail = %i", ret);
+      }
+      wait_ns(500);  // 0.5us between start and stops
+    }
+
+    if (PdSendTicker.checkExpired()) {
+      ret = UsbPd.writeRegister(Fusb302::Register::kControl0, 0x44);  // flush TX
+      if (ret) {
+        debugInfo("PD Flush Fail: %i", ret);
+      }
+      wait_ns(500);  // 0.5us between start and stops
+
+      uint8_t payload[20];
+      payload[0] = Fusb302::sopSet[0];
+      payload[1] = Fusb302::sopSet[1];
+      payload[2] = Fusb302::sopSet[2];
+      payload[3] = Fusb302::sopSet[3];
+      payload[4] = Fusb302::kFifoTokens::kPackSym | 2;
+      uint16_t header = UsbPd::makeHeader(UsbPd::ControlMessageType::kGetSourceCap, 0, 0);
+      payload[5] = header & 0xff;  // little-endian conversion
+      payload[6] = (header >> 8) & 0xff;
+      payload[7] = Fusb302::kFifoTokens::kJamCrc;
+      payload[8] = Fusb302::kFifoTokens::kEop;
+      payload[9] = Fusb302::kFifoTokens::kTxOff;
+      payload[10] = Fusb302::kFifoTokens::kTxOn;
+
+      ret = UsbPd.writeRegister(Fusb302::Register::kFifos, 11, payload);
+      if (ret) {
+        debugInfo("PD TX Fail: %i", ret);
+      }
+      wait_ns(500);  // 0.5us between start and stops
+
+      ret = UsbPd.writeRegister(Fusb302::Register::kControl0, 0x05);  // manual TX start
+      if (ret) {
+        debugInfo("PD TX Start: %i", ret);
       }
 
+      wait_ns(500);
 
+      uint8_t pdStatus[2];
+      if (!(ret = UsbPd.readRegister(Fusb302::Register::kStatus0, 2, pdStatus))) {
+        if ((pdStatus[1] & 0x20) == 0) {  // RX not empty
+          debugInfo("PD RX not empty");
+        }
+      } else {
+        debugInfo("PD Status Fail = %i", ret);
+      }
+      wait_ns(500);  // 0.5us between start and stops
+    }
 
+    if (LcdUpdateTicker.checkExpired()) {
       DacLdac = 1;
 
       SharedSpi.frequency(100000);

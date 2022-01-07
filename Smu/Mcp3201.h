@@ -3,6 +3,7 @@
 #ifndef __MCP3201_H__
 #define __MCP3201_H__
 
+
 // MCP3201 12-bit SPI ADC
 class Mcp3201 {
 public:
