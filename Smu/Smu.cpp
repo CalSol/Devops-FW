@@ -251,6 +251,19 @@ int main() {
         debugInfo("PD Interrupt A/B 0x %02x %02x", pdStatus[2], pdStatus[3]);
         debugInfo("PD Status 0/1    0x %02x %02x", pdStatus[4], pdStatus[5]);
         debugInfo("PD Interrupt     0x %02x", pdStatus[6]);
+
+        if ((pdStatus[5] & 0x20) == 0) {
+          uint8_t rxData[30];
+          wait_ns(500);
+          ret = UsbPd.readNextRxFifo(rxData);
+          if (ret) {
+            debugInfo("PD RX FIFO Fail: %i", ret);
+          } else {
+            debugInfo("PD RX FIFO: %02x %02x  %02x %02x %02x %02x %02x", 
+                rxData[0], rxData[1], 
+                rxData[2], rxData[3], rxData[4], rxData[5], rxData[6]);
+          }
+        }
       } else {
         debugInfo("PD Status Fail = %i", ret);
       }
@@ -264,44 +277,9 @@ int main() {
       }
       wait_ns(500);  // 0.5us between start and stops
 
-      uint8_t payload[20];
-      payload[0] = Fusb302::sopSet[0];
-      payload[1] = Fusb302::sopSet[1];
-      payload[2] = Fusb302::sopSet[2];
-      payload[3] = Fusb302::sopSet[3];
-      payload[4] = Fusb302::kFifoTokens::kPackSym | 2;
-      uint16_t header = UsbPd::makeHeader(UsbPd::ControlMessageType::kGetSourceCap, 0, 0);
-      payload[5] = header & 0xff;  // little-endian conversion
-      payload[6] = (header >> 8) & 0xff;
-      payload[7] = Fusb302::kFifoTokens::kJamCrc;
-      payload[8] = Fusb302::kFifoTokens::kEop;
-      payload[9] = Fusb302::kFifoTokens::kTxOff;
-      payload[10] = Fusb302::kFifoTokens::kTxOn;
-      debugInfo("%02x %02x %02x %02x  %02x  %02x %02x  %02x %02x %02x  %02x", 
-          payload[0], payload[1], payload[2], payload[3],
-          payload[4],
-          payload[5], payload[6],
-          payload[7], payload[8], payload[9], payload[10]);
-
-      ret = UsbPd.writeRegister(Fusb302::Register::kFifos, 11, payload);
+      ret = UsbPd.writeFifoMessage(UsbPd::makeHeader(UsbPd::ControlMessageType::kGetSourceCap, 0, 0));
       if (ret) {
         debugInfo("PD TX Fail: %i", ret);
-      }
-      wait_ns(500);  // 0.5us between start and stops
-
-      ret = UsbPd.writeRegister(Fusb302::Register::kControl0, 0x05);  // manual TX start
-      if (ret) {
-        debugInfo("PD TX Start: %i", ret);
-      }
-      wait_ns(500);
-
-      uint8_t pdStatus[2];
-      if (!(ret = UsbPd.readRegister(Fusb302::Register::kStatus0, 2, pdStatus))) {
-        if ((pdStatus[1] & 0x20) == 0) {  // RX not empty
-          debugInfo("PD RX not empty");
-        }
-      } else {
-        debugInfo("PD Status Fail = %i", ret);
       }
       wait_ns(500);  // 0.5us between start and stops
     }

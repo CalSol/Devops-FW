@@ -1,5 +1,8 @@
 #include <mbed.h>
 
+#include "UsbPd.h"
+
+
 #ifndef __FUSB302_H__
 #define __FUSB302_H__
 
@@ -26,6 +29,7 @@ public:
   // Low-level register write function, returning the I2C error code (if nonzero) or zero (on success)
   int writeRegister(uint8_t addr, size_t len, uint8_t data[]) {
     i2c_.start();
+    wait_ns(260);
     int ret = i2c_.write(kI2cAddr & 0xfe);  // ensure write bit is set
     if (ret != 1) {
       return TransferResult::kNoDevice;
@@ -40,6 +44,7 @@ public:
         return TransferResult::kNackData + i;
       } 
     }
+    wait_ns(260);
     i2c_.stop();
     return 0;
   }
@@ -65,11 +70,69 @@ public:
     return readRegister(Register::kDeviceId, idOut);
   }
 
+  int writeFifoMessage(uint16_t header, uint8_t numObjects=0, uint32_t data[]=NULL) {
+    uint8_t buffer[38];  // 4 SOP + 1 pack sym + 2 header + 7x4 data + 1 EOP + 1 TxOff + 1 TxOn
+    uint8_t bufInd = 0;
+    buffer[bufInd++] = kSopSet[0];
+    buffer[bufInd++] = kSopSet[1];
+    buffer[bufInd++] = kSopSet[2];
+    buffer[bufInd++] = kSopSet[3];
+    buffer[bufInd++] = kFifoTokens::kPackSym | (2 + numObjects * 4);
+    UsbPd::packUint16(header, buffer + bufInd);
+    bufInd += 2;
+    buffer[bufInd++] = Fusb302::kFifoTokens::kJamCrc;
+    buffer[bufInd++] = Fusb302::kFifoTokens::kEop;
+    buffer[bufInd++] = Fusb302::kFifoTokens::kTxOff;
+    buffer[bufInd++] = Fusb302::kFifoTokens::kTxOn;
+
+    return writeRegister(Fusb302::Register::kFifos, 4 + 1 + 2 + (numObjects * 4) + 4, buffer);
+  }
+
+  // Reads the next packet from the RX FIFO, returning 0 if a packet was read, or an error code otherwise
+  int readNextRxFifo(uint8_t dataOut[]) {
+    i2c_.start();
+    wait_ns(260);
+    int ret = i2c_.write(kI2cAddr & 0xfe);  // ensure write bit is clear
+    if (ret != 1) {
+      return TransferResult::kNoDevice;
+    }
+    ret = i2c_.write(Register::kFifos);
+    if (ret != 1) {
+      return TransferResult::kNackAddr;
+    }
+
+    wait_ns(260);
+    i2c_.start();
+    wait_ns(260);
+    ret = i2c_.write(kI2cAddr | 0x01);  // ensure read bit is set
+    // if (ret != 1) {
+    //   return TransferResult::kNoDeviceRead;
+    // }
+
+    uint16_t data;
+    data = i2c_.read(true);
+    if (data & kRxFifoTokenMask != kRxFifoTokens::kSop) {
+      return TransferResult::kUnknownRxStructure;
+    }
+    dataOut[0] = i2c_.read(true);
+    dataOut[1] = i2c_.read(true);
+    dataOut[2] = i2c_.read(true);
+    dataOut[3] = i2c_.read(true);
+    dataOut[4] = i2c_.read(true);
+    dataOut[5] = i2c_.read(true);
+    dataOut[6] = i2c_.read(false);
+    wait_ns(260);
+    i2c_.stop();
+    return 0;
+  }
+
   enum TransferResult {
     kOk = 0x00,
     kNoDevice = 0x01,
     kNackAddr = 0x02,
-    kNackData = 0x03,  // + data index
+    kNoDeviceRead = 0x03,
+    kUnknownRxStructure = 0x04,
+    kNackData = 0x10,  // + data index
   };
 
   uint8_t kI2cAddr = 0x44;
@@ -115,8 +178,9 @@ public:
   enum kRxFifoTokens {
     kSop = 0xe0,  // only top 3 MSBs matter
   };
+  const uint8_t kRxFifoTokenMask = 0xe0;
 
-  static constexpr kFifoTokens sopSet[4] = {
+  static constexpr kFifoTokens kSopSet[4] = {
     kFifoTokens::kSop1, 
     kFifoTokens::kSop1,
     kFifoTokens::kSop1, 

@@ -48,6 +48,16 @@ public:
     return (data & ((1 << maskBits) - 1)) << shiftBits;
   }
 
+  static constexpr inline uint16_t extractBits(uint16_t data, uint8_t maskBits, uint8_t shiftBits) {
+    return (data >> shiftBits) & ((1 << maskBits) - 1);
+  }
+
+  // Packs a uint16 into little-endian order
+  static constexpr inline void packUint16(uint16_t data, uint8_t target[]) {
+    target[0] = data & 0xff;
+    target[1] = (data >> 8) & 0xff;
+  }
+
   static uint16_t makeHeader(ControlMessageType messageType, uint8_t numDataObjects, uint8_t messageId, 
       PortPowerRole powerRole = PortPowerRole::kSink, PortDataRole dataRole = PortDataRole::kUfp,
       SpecificationRevision spec = SpecificationRevision::kRevision2_0) {
