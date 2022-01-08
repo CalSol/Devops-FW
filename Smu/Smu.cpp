@@ -251,22 +251,31 @@ int main() {
         debugInfo("PD Interrupt A/B 0x %02x %02x", pdStatus[2], pdStatus[3]);
         debugInfo("PD Status 0/1    0x %02x %02x", pdStatus[4], pdStatus[5]);
         debugInfo("PD Interrupt     0x %02x", pdStatus[6]);
-
-        if ((pdStatus[5] & 0x20) == 0) {
-          uint8_t rxData[30];
-          wait_ns(500);
-          ret = UsbPd.readNextRxFifo(rxData);
-          if (ret) {
-            debugInfo("PD RX FIFO Fail: %i", ret);
-          } else {
-            debugInfo("PD RX FIFO: %02x %02x  %02x %02x %02x %02x %02x", 
-                rxData[0], rxData[1], 
-                rxData[2], rxData[3], rxData[4], rxData[5], rxData[6]);
-          }
-        }
       } else {
         debugInfo("PD Status Fail = %i", ret);
       }
+
+      bool rxEmpty = (pdStatus[5] & 0x20) != 0;
+      while (!rxEmpty) {
+        uint8_t rxData[30] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+        wait_ns(500);
+        ret = UsbPd.readNextRxFifo(rxData);
+        if (ret) {
+          debugInfo("PD RX FIFO Fail: %i", ret);
+        } else {
+          debugInfo("PD RX FIFO: %02x %02x  %02x %02x %02x %02x  %02x %02x %02x %02x  %02x %02x %02x %02x", 
+              rxData[0], rxData[1], 
+              rxData[2], rxData[3], rxData[4], rxData[5], 
+              rxData[6], rxData[7], rxData[8], rxData[9], 
+              rxData[10], rxData[11], rxData[12], rxData[13]);
+        }
+
+        while (ret = UsbPd.readRegister(Fusb302::Register::kStatus1, pdStatus[5])) {
+          debugInfo("PD Status Fail = %i", ret);
+        }
+        rxEmpty = (pdStatus[5] & 0x20) != 0;
+      }
+
       wait_ns(500);  // 0.5us between start and stops
     }
 
@@ -277,7 +286,9 @@ int main() {
       }
       wait_ns(500);  // 0.5us between start and stops
 
-      ret = UsbPd.writeFifoMessage(UsbPd::makeHeader(UsbPd::ControlMessageType::kGetSourceCap, 0, 0));
+      uint16_t header = UsbPd::makeHeader(UsbPd::ControlMessageType::kGetSourceCap, 0, 2);
+      debugInfo("PD Sending Header: %04x", header);
+      ret = UsbPd.writeFifoMessage(header);
       if (ret) {
         debugInfo("PD TX Fail: %i", ret);
       }

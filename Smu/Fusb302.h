@@ -70,26 +70,34 @@ public:
     return readRegister(Register::kDeviceId, idOut);
   }
 
-  int writeFifoMessage(uint16_t header, uint8_t numObjects=0, uint32_t data[]=NULL) {
+  int writeFifoMessage(uint16_t header, uint8_t numDataObjects=0, uint32_t data[]=NULL) {
     uint8_t buffer[38];  // 4 SOP + 1 pack sym + 2 header + 7x4 data + 1 EOP + 1 TxOff + 1 TxOn
     uint8_t bufInd = 0;
     buffer[bufInd++] = kSopSet[0];
     buffer[bufInd++] = kSopSet[1];
     buffer[bufInd++] = kSopSet[2];
     buffer[bufInd++] = kSopSet[3];
-    buffer[bufInd++] = kFifoTokens::kPackSym | (2 + numObjects * 4);
+    buffer[bufInd++] = kFifoTokens::kPackSym | (2 + numDataObjects * 4);
     UsbPd::packUint16(header, buffer + bufInd);
     bufInd += 2;
+    for (uint8_t i=0; i<numDataObjects; i++) {
+      UsbPd::packUint32(data[i], buffer + bufInd);
+      bufInd += 4;
+    }
     buffer[bufInd++] = Fusb302::kFifoTokens::kJamCrc;
     buffer[bufInd++] = Fusb302::kFifoTokens::kEop;
     buffer[bufInd++] = Fusb302::kFifoTokens::kTxOff;
     buffer[bufInd++] = Fusb302::kFifoTokens::kTxOn;
 
-    return writeRegister(Fusb302::Register::kFifos, 4 + 1 + 2 + (numObjects * 4) + 4, buffer);
+    return writeRegister(Fusb302::Register::kFifos, 4 + 1 + 2 + (numDataObjects * 4) + 4, buffer);
   }
 
-  // Reads the next packet from the RX FIFO, returning 0 if a packet was read, or an error code otherwise
-  int readNextRxFifo(uint8_t dataOut[]) {
+  // Reads the next packet from the RX FIFO, returning 0 if a packet was read, or an error code otherwise.
+  // bufferOut must be at least 30 bytes
+  int readNextRxFifo(uint8_t bufferOut[]) {
+    uint8_t dump[4];  // CRC bytes
+    uint8_t bufferInd = 0;
+
     i2c_.start();
     wait_ns(260);
     int ret = i2c_.write(kI2cAddr & 0xfe);  // ensure write bit is clear
@@ -109,18 +117,31 @@ public:
     //   return TransferResult::kNoDeviceRead;
     // }
 
-    uint16_t data;
-    data = i2c_.read(true);
-    if (data & kRxFifoTokenMask != kRxFifoTokens::kSop) {
+    uint8_t sofByte;
+    sofByte = i2c_.read(true);
+    if (sofByte & kRxFifoTokenMask != kRxFifoTokens::kSop) {
       return TransferResult::kUnknownRxStructure;
     }
-    dataOut[0] = i2c_.read(true);
-    dataOut[1] = i2c_.read(true);
-    dataOut[2] = i2c_.read(true);
-    dataOut[3] = i2c_.read(true);
-    dataOut[4] = i2c_.read(true);
-    dataOut[5] = i2c_.read(true);
-    dataOut[6] = i2c_.read(false);
+
+    // Read out and parse the header
+    bufferOut[0] = i2c_.read(true);
+    bufferOut[1] = i2c_.read(true);
+    uint16_t header = UsbPd::unpackUint16(bufferOut + 0);
+    uint16_t numDataObjects = UsbPd::extractBits(header,
+        UsbPdFormat::MessageHeader::kSizeNumDataObjects, UsbPdFormat::MessageHeader::kPosNumDataObjects);
+    bufferInd += 2;
+
+    // Read out additional data objects
+    for (uint8_t i=0; i<numDataObjects * 4; i++) {
+        bufferOut[bufferInd++] = i2c_.read(true);
+    }
+
+    // Drop the CRC bytes, these should be checked by the chip
+    for (uint8_t i=0; i<3; i++) {
+        i2c_.read(true);
+    }
+    i2c_.read(false);
+
     wait_ns(260);
     i2c_.stop();
     return 0;

@@ -4,6 +4,27 @@
 #define __USB_PD_H__
 
 
+namespace UsbPdFormat {
+  namespace MessageHeader {
+    const uint8_t kSizeExtended = 1;
+    const uint8_t kSizeNumDataObjects = 3;
+    const uint8_t kSizeMessageId = 3;
+    const uint8_t kSizePowerRole = 1;
+    const uint8_t kSizeSpecRevision = 2;
+    const uint8_t kSizeDataRole = 1;
+    const uint8_t kSizeMessageType = 5;
+    enum Position {
+      kPosMessageType = 0,
+      kPosDataRole = 5,
+      kPosSpecRevision = 6,
+      kPosPowerRole = 8,
+      kPosMessageId = 9,
+      kPosNumDataObjects = 12,
+      kPosExtended = 15,
+    };
+  }
+}
+
 class UsbPd {
 public:
   enum ControlMessageType {
@@ -44,29 +65,43 @@ public:
 
   // Masks an input value to the specified number of bits, the shifts it.
   // Used as a component in packing messages.
-  static constexpr inline uint16_t maskAndShift(uint16_t data, uint8_t maskBits, uint8_t shiftBits) {
-    return (data & ((1 << maskBits) - 1)) << shiftBits;
+  static constexpr inline uint16_t maskAndShift(uint16_t data, uint8_t numMaskBits, uint8_t shiftBits) {
+    return (data & ((1 << numMaskBits) - 1)) << shiftBits;
   }
 
-  static constexpr inline uint16_t extractBits(uint16_t data, uint8_t maskBits, uint8_t shiftBits) {
-    return (data >> shiftBits) & ((1 << maskBits) - 1);
+  static constexpr inline uint16_t extractBits(uint16_t data, uint8_t numMaskBits, uint8_t shiftBits) {
+    return (data >> shiftBits) & ((1 << numMaskBits) - 1);
   }
 
-  // Packs a uint16 into little-endian order
-  static constexpr inline void packUint16(uint16_t data, uint8_t target[]) {
-    target[0] = data & 0xff;
-    target[1] = (data >> 8) & 0xff;
+  // Deserialize little-endian buffer bytes into a uint16
+  static constexpr inline uint16_t unpackUint16(uint8_t buffer[]) {
+    return (uint16_t)buffer[0] | 
+        ((uint16_t)buffer[1] << 8);
+  }
+
+  // Serialize a uint16 into little-endian order
+  static constexpr inline void packUint16(uint16_t data, uint8_t buffer[]) {
+    buffer[0] = data & 0xff;
+    buffer[1] = (data >> 8) & 0xff;
+  }
+
+  // Serialize a uint32 into little-endian order
+  static constexpr inline void packUint32(uint32_t data, uint8_t buffer[]) {
+    buffer[0] = data & 0xff;
+    buffer[1] = (data >> 8) & 0xff;
+    buffer[2] = (data >> 16) & 0xff;
+    buffer[3] = (data >> 24) & 0xff;
   }
 
   static uint16_t makeHeader(ControlMessageType messageType, uint8_t numDataObjects, uint8_t messageId, 
       PortPowerRole powerRole = PortPowerRole::kSink, PortDataRole dataRole = PortDataRole::kUfp,
       SpecificationRevision spec = SpecificationRevision::kRevision2_0) {
-    return maskAndShift(numDataObjects, 3, 12) |
-        maskAndShift(messageId, 3, 9) |
-        maskAndShift(powerRole, 1, 8) |
-        maskAndShift(spec, 2, 6) |
-        maskAndShift(dataRole, 1, 5) |
-        maskAndShift(messageType, 3, 0);
+    return maskAndShift(numDataObjects, UsbPdFormat::MessageHeader::kSizeNumDataObjects, UsbPdFormat::MessageHeader::kPosNumDataObjects) |
+        maskAndShift(messageId, UsbPdFormat::MessageHeader::kSizeMessageId, UsbPdFormat::MessageHeader::kPosMessageId) |
+        maskAndShift(powerRole, UsbPdFormat::MessageHeader::kSizePowerRole, UsbPdFormat::MessageHeader::kPosPowerRole) |
+        maskAndShift(spec, UsbPdFormat::MessageHeader::kSizeSpecRevision, UsbPdFormat::MessageHeader::kPosSpecRevision) |
+        maskAndShift(dataRole, UsbPdFormat::MessageHeader::kSizeDataRole, UsbPdFormat::MessageHeader::kPosDataRole) |
+        maskAndShift(messageType, UsbPdFormat::MessageHeader::kSizeMessageType, UsbPdFormat::MessageHeader::kPosMessageType);
   }
 };
 
