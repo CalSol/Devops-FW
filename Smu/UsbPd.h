@@ -148,4 +148,11 @@ public:
   }
 };
 
+namespace UsbPdTiming {
+  const int tTypeCSendSourceCapMsMax = 200;
+  const int tSenderResponseMsMax = 30;  // response GoodCRC EOP to actual response message EOP
+  const int tReceiveMs = 1; // actually 0.9-1.1ms, Message EOP to GoodCRC EOP
+  const int tSinkRequestMs = 100;  // Wait EOP to earliest the next Request should be sent
+}
+
 #endif  // __USB_PD_H__

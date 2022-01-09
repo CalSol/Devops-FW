@@ -81,13 +81,13 @@ public:
       case kConnected:
         if (!int_) {
           int ret;
-          uint8_t intVal;
-          if (!(ret = fusb_.readRegister(Fusb302::Register::kInterrupt, intVal))) {
-            if (intVal & Fusb302::kInterrupt::kICrcChk) {
+          uint8_t intVal[2];
+          if (!(ret = fusb_.readRegister(Fusb302::Register::kInterrupt, intVal[0]))) {
+            if (intVal[0] & Fusb302::kInterrupt::kICrcChk) {
               debugInfo("update(): Connected: ICrcChk");
               processRxMessages();
             }
-            if (intVal & Fusb302::kInterrupt::kICompChng) {
+            if (intVal[0] & Fusb302::kInterrupt::kICompChng) {
               debugInfo("update(): Connected: ICompChng");
 
               uint8_t compResult;
@@ -105,6 +105,27 @@ public:
           } else {
             debugWarn("update(): Connected readRegister(Interrupt) failed");
           }
+          wait_ns(Fusb302::kStopStartDelayNs);
+          if (!(ret = fusb_.readRegister(Fusb302::Register::kInterrupta, 2, intVal))) {
+            if (intVal[0] & Fusb302::kInterrupta::kIHardSent) {
+              debugInfo("update(): Connected: IHardSent");
+            }
+            if (intVal[0] & Fusb302::kInterrupta::kITxSent) {
+              debugInfo("update(): Connected: ITxSent");
+            }
+            if (intVal[0] & Fusb302::kInterrupta::kISoftRst) {
+              debugInfo("update(): Connected: ISoftRst");
+            }
+            if (intVal[0] & Fusb302::kInterrupta::kIHardRst) {
+              debugInfo("update(): Connected: IHardRst");
+            }
+            if (intVal[1] & Fusb302::kInterruptb::kIGcrcsent) {
+              debugInfo("update(): Connected: IGcrcsent");
+            }
+          } else {
+            debugWarn("update(): Connected readRegister(Interrupta/b) failed");
+          }
+          wait_ns(Fusb302::kStopStartDelayNs);
         }
         if (compLowTimer_.read_ms() >= kCompLowResetTimeMs) {
           debugWarn("update(): Connected -> (reset)");
@@ -178,7 +199,7 @@ protected:
   int init() {
     int ret;
 
-    if ((ret = fusb_.writeRegister(Fusb302::Register::kReset, 0x01))) {  // reset everything
+    if ((ret = fusb_.writeRegister(Fusb302::Register::kReset, 0x03))) {  // reset everything
       debugWarn("init(): reset failed = %i", ret);
       errorCount_++; return ret;
     }
@@ -393,7 +414,7 @@ protected:
   Timer timer_, compLowTimer_;
 
   static const int kMeasureTimeMs = 1;  // TODO arbitrary
-  static const int kCompLowResetTimeMs = 50;  // time Vbus needs to be low to detect a disconnect; TODO arbitrary
+  static const int kCompLowResetTimeMs = 1000;  // time Vbus needs to be low to detect a disconnect; TODO arbitrary
   static const int kCompVBusThresholdMv = 3000;  // account for leakage from 3.3v
 };
 

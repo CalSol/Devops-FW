@@ -70,6 +70,10 @@ public:
     return readRegister(Register::kDeviceId, idOut);
   }
 
+  int sendHardReset() {
+    return writeRegister(Register::kControl3, 0x47);
+  }
+
   int writeFifoMessage(uint16_t header, uint8_t numDataObjects=0, uint32_t data[]=NULL) {
     uint8_t buffer[38];  // 4 SOP + 1 pack sym + 2 header + 7x4 data + 1 EOP + 1 TxOff + 1 TxOn
     uint8_t bufInd = 0;
@@ -220,6 +224,21 @@ public:
     kIWake = 0x04,
     kICollision = 0x02,
     kIBcLvl = 0x01,
+  };
+
+  enum kInterrupta {
+    kIOcpTemp = 0x80,
+    kITogDone = 0x40,
+    kISoftFail = 0x20,
+    kIRetryFail = 0x10,
+    kIHardSent = 0x08,
+    kITxSent = 0x04,
+    kISoftRst = 0x02,
+    kIHardRst = 0x01,
+  };
+
+  enum kInterruptb {
+    kIGcrcsent = 0x01,
   };
 
   static constexpr kFifoTokens kSopSet[4] = {

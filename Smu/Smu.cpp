@@ -236,7 +236,7 @@ int main() {
       reqSent = false;
     }
     if (numCapabilities > 0 && !reqSent) {
-      UsbPd.requestCapability(1, 3000);
+      // UsbPd.requestCapability(1, 3000);
       // uint16_t header = UsbPd::makeHeader(UsbPd::ControlMessageType::kGetSourceCap, 0, 7);
       // FusbDevice.writeFifoMessage(header);
       reqSent = true;
@@ -341,11 +341,13 @@ int main() {
     }
 
     switch (SwitchCGesture.update()) {
-      case ButtonGesture::Gesture::kClickUp:
+      case ButtonGesture::Gesture::kClickUp:.
+        UsbPd.requestCapability(3, 3000);
         selected = (selected + 1) % 3;
         break;
       case ButtonGesture::Gesture::kHeldTransition:
-        UsbPd.requestCapability(3, 3000);
+        // FusbDevice.sendHardReset();
+        FusbDevice.writeRegister(Fusb302::Register::kReset, 0x02);
         enabled = !enabled;
         break;
       default: break;
