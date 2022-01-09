@@ -102,7 +102,7 @@ public:
     buffer[3] = (data >> 24) & 0xff;
   }
 
-  static uint16_t makeHeader(ControlMessageType messageType, uint8_t numDataObjects, uint8_t messageId, 
+  static uint16_t makeHeader(uint8_t messageType, uint8_t numDataObjects, uint8_t messageId, 
       PortPowerRole powerRole = PortPowerRole::kSink, PortDataRole dataRole = PortDataRole::kUfp,
       SpecificationRevision spec = SpecificationRevision::kRevision2_0) {
     return maskAndShift(numDataObjects, UsbPdFormat::MessageHeader::kSizeNumDataObjects, UsbPdFormat::MessageHeader::kPosNumDataObjects) |

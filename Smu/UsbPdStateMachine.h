@@ -29,7 +29,7 @@ public:
           timer_.reset();
           state_ = kDetectCc1;
         } else {
-          debugWarn("update(): Start init / setMeasure failed")
+          debugWarn("update(): Start init / setMeasure failed");
         }
         break;
       case kDetectCc1:
@@ -39,7 +39,7 @@ public:
             timer_.reset();
             state_ = kDetectCc2;
           } else {
-            debugWarn("update(): DetectCc1 readMeasure / setMeasure failed")
+            debugWarn("update(): DetectCc1 readMeasure / setMeasure failed");
           }
         }
         break;
@@ -58,9 +58,11 @@ public:
               if (!enablePdTrasceiver(setCcPin)) {
                 debugInfo("update(): DetectCc2 -> Connected (CC=%i)", setCcPin);
                 ccPin_ = setCcPin;
+                compLowTimer_.reset();
+                compLowTimer_.stop();
                 state_ = kConnected;
               } else {
-                debugWarn("update(): DetectCc2 enablePdTransceiver failed")
+                debugWarn("update(): DetectCc2 enablePdTransceiver failed");
               }
             } else {
               if (!setMeasure(1)) {
@@ -68,11 +70,11 @@ public:
                 timer_.reset();
                 state_ = kDetectCc1;
               } else {
-                debugWarn("update(): DetectCc2 setMeasure(1) failed")
+                debugWarn("update(): DetectCc2 setMeasure(1) failed");
               }
             }
           } else {
-            debugWarn("update(): DetectCc2 readMeasure failed")
+            debugWarn("update(): DetectCc2 readMeasure failed");
           }
         }
         break;
@@ -85,30 +87,28 @@ public:
               debugInfo("update(): Connected: ICrcChk");
               processRxMessages();
             }
-            if (intVal & Fusb302::kInterrupt::kIBcLvl) {
-              debugInfo("update(): Connected: IBcLvl");
+            if (intVal & Fusb302::kInterrupt::kICompChng) {
+              debugInfo("update(): Connected: ICompChng");
 
-              uint8_t ccMeasureLevel;
-              if (!readMeasure(ccMeasureLevel)) {
-                if (ccMeasureLevel == 0) {
-                  debugInfo("update(): Connected -> (reset)");
-                  reset();
+              uint8_t compResult;
+              if (!readComp(compResult)) {
+                if (compResult == 0) {
+                  compLowTimer_.start();
+                } else {
+                  compLowTimer_.reset();
+                  compLowTimer_.stop();
                 }
               } else {
-                debugWarn("update(): Connected: IBcLvl readMeasure failed")
+                debugWarn("update(): Connected: ICompChng readComp failed");
               }
             }
           } else {
-            debugWarn("update(): Connected readRegister(Interrupt) failed")
+            debugWarn("update(): Connected readRegister(Interrupt) failed");
           }
         }
-        if (sourceCapabilitiesLen_ == 0) {
-          int ret;
-          uint16_t header = UsbPd::makeHeader(UsbPd::ControlMessageType::kGetSourceCap, 0, nextMessageId_);
-          if (!(ret = fusb_.writeFifoMessage(header))) {
-            debugWarn("update(): Connected writeFifoMessage(GetSourceCap, %i) failed", nextMessageId_)
-          }
-          nextMessageId_ = (nextMessageId_ + 1) % 8;
+        if (compLowTimer_.read_ms() >= kCompLowResetTimeMs) {
+          debugWarn("update(): Connected -> (reset)");
+          reset();
         }
         break;
     }
@@ -134,8 +134,31 @@ public:
     return sourceCapabilitiesLen_;
   }
 
+  // The currently active capability requested to and confirmed by the source.
+  // Zero means the default (none was requested).
+  // 1 is the first capability, consistent with the object position field described in the PD spec.
   uint8_t selectedCapability() {
     return selectedCapability_;
+  }
+
+  // Requests a capability from the source.
+  // 1 is the first capability, consistent with the object position field described in the PD spec.
+  int requestCapability(uint8_t capability, uint16_t currentMa) {
+    int ret;
+    uint16_t header = UsbPd::makeHeader(UsbPd::DataMessageType::kRequest, 1, nextMessageId_);
+
+    uint32_t requestData = UsbPd::maskAndShift(capability, 3, 28) |
+        UsbPd::maskAndShift(1, 10, 24) |  // no USB suspend
+        UsbPd::maskAndShift(currentMa / 10, 10, 10) |
+        UsbPd::maskAndShift(currentMa / 10, 10, 0);
+
+    if (!(ret = fusb_.writeFifoMessage(header, 1, &requestData))) {
+      debugInfo("requestCapability(): writeFifoMessage(Request(%i), %i)", capability, nextMessageId_);
+    } else {
+      debugWarn("requestCapability(): writeFifoMessage(Request(%i), %i) failed", capability, nextMessageId_);
+    }
+    nextMessageId_ = (nextMessageId_ + 1) % 8;
+    return ret;
   }
 
   uint16_t errorCount_ = 0;
@@ -172,6 +195,11 @@ protected:
       debugWarn("init(): power failed = %i", ret);
       errorCount_++; return ret;
     }
+    wait_ns(Fusb302::kStopStartDelayNs);
+    if ((ret = fusb_.writeRegister(Fusb302::Register::kMeasure, 0x40 | (kCompVBusThresholdMv/42)))) {  // MEAS_VBUS
+      debugWarn("enablePdTransceiver(): Measure failed = %i", ret);
+      errorCount_++; return ret;
+    }
     wait_ns(Fusb302::kStopStartDelayNs);  
     if ((ret = fusb_.writeRegister(Fusb302::Register::kControl0, 0x04))) {  // unmask interrupts
       debugWarn("init(): control0 failed = %i", ret);
@@ -197,7 +225,7 @@ protected:
       return -1;  // TODO better error codes
     }
 
-    if ((ret = fusb_.writeRegister(Fusb302::Register::kSwitches0, switches0Val))) {
+    if ((ret = fusb_.writeRegister(Fusb302::Register::kSwitches0, switches0Val))) {  // PDWN1/2
       debugWarn("enablePdTransceiver(): switches0 failed = %i", ret);
       errorCount_++; return ret;
     }
@@ -252,6 +280,19 @@ protected:
     wait_ns(Fusb302::kStopStartDelayNs);
 
     result = regVal & 0x03;  // take BC_LVL only
+    return 0;
+  }
+
+  int readComp(uint8_t& result) {
+    uint8_t regVal;
+    int ret;
+    if ((ret = fusb_.readRegister(Fusb302::Register::kStatus0, regVal))) {
+      debugWarn("readMeasure(): status0 failed = %i", ret);
+      errorCount_++; return ret;
+    }
+    wait_ns(Fusb302::kStopStartDelayNs);
+
+    result = regVal & 0x20;  // take COMP only
     return 0;
   }
 
@@ -310,13 +351,13 @@ protected:
       UsbPd::Capability capability = UsbPd::unpackCapability(sourceCapabilitiesObjects_[i]);
       if (capability.capabilitiesType == UsbPd::Capability::CapabilityType::kFixedSupply) {
         debugInfo("processRxSourceCapabilities %i/%i 0x%08lx = Fixed: %i mV, %i mA; %s %s",
-            i, numDataObjects, sourceCapabilitiesObjects_[i],
+            i+1, numDataObjects, sourceCapabilitiesObjects_[i],
             capability.voltageMv, capability.maxCurrentMa,
             capability.dualRolePower ? "DualRolePower" : "NonDualRolePower",
             capability.unconstrainedPower ? "Unconstrained" : "Constrained");
       } else {
         debugInfo("processRxSourceCapabilities %i/%i 0x%08lx = type %i", 
-            i, numDataObjects, sourceCapabilitiesObjects_[i], 
+            i+1, numDataObjects, sourceCapabilitiesObjects_[i], 
             capability.capabilitiesType);
       }
 
@@ -349,9 +390,11 @@ protected:
 
   Fusb302& fusb_;
   DigitalIn& int_;
-  Timer timer_;
+  Timer timer_, compLowTimer_;
 
-  static const int kMeasureTimeMs = 10;  // TODO arbitrary
+  static const int kMeasureTimeMs = 1;  // TODO arbitrary
+  static const int kCompLowResetTimeMs = 50;  // time Vbus needs to be low to detect a disconnect; TODO arbitrary
+  static const int kCompVBusThresholdMv = 3000;  // account for leakage from 3.3v
 };
 
 #endif
