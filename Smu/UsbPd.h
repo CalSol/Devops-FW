@@ -66,11 +66,11 @@ public:
 
   // Masks an input value to the specified number of bits, the shifts it.
   // Used as a component in packing messages.
-  static constexpr inline uint16_t maskAndShift(uint16_t data, uint8_t numMaskBits, uint8_t shiftBits) {
+  static constexpr inline uint32_t maskAndShift(uint32_t data, uint8_t numMaskBits, uint8_t shiftBits) {
     return (data & ((1 << numMaskBits) - 1)) << shiftBits;
   }
 
-  static constexpr inline uint16_t extractBits(uint16_t data, uint8_t numMaskBits, uint8_t shiftBits) {
+  static constexpr inline uint32_t extractBits(uint32_t data, uint8_t numMaskBits, uint8_t shiftBits) {
     return (data >> shiftBits) & ((1 << numMaskBits) - 1);
   }
 
@@ -111,6 +111,40 @@ public:
         maskAndShift(spec, UsbPdFormat::MessageHeader::kSizeSpecRevision, UsbPdFormat::MessageHeader::kPosSpecRevision) |
         maskAndShift(dataRole, UsbPdFormat::MessageHeader::kSizeDataRole, UsbPdFormat::MessageHeader::kPosDataRole) |
         maskAndShift(messageType, UsbPdFormat::MessageHeader::kSizeMessageType, UsbPdFormat::MessageHeader::kPosMessageType);
+  }
+
+  struct Capability {  // decoded capabilities message
+    enum CapabilityType {
+      kFixedSupply = 0,
+      kBattery = 1,
+      kVariable = 2,
+      kAugmented = 3,  // different data format
+    };
+    CapabilityType capabilitiesType;
+    bool dualRolePower;
+    bool usbSuspendSupported;
+    bool unconstrainedPower;
+    bool usbCommunicationsCapable;
+    bool dualRoleData;
+    bool unchunkedExtendedMessagesSupported;
+    uint8_t peakCurrent;  // TODO: not decoded
+    uint16_t voltageMv;
+    uint16_t maxCurrentMa;
+  };
+
+  static Capability unpackCapability(uint32_t packed) {
+    Capability capability;
+    capability.capabilitiesType = (Capability::CapabilityType)extractBits(packed, 2, 30);
+    capability.dualRolePower = extractBits(packed, 1, 29);
+    capability.usbSuspendSupported = extractBits(packed, 1, 28);
+    capability.unconstrainedPower = extractBits(packed, 1, 27);
+    capability.usbCommunicationsCapable = extractBits(packed, 1, 26);
+    capability.dualRoleData = extractBits(packed, 1, 25);
+    capability.unchunkedExtendedMessagesSupported = extractBits(packed, 1, 24);
+    capability.peakCurrent = extractBits(packed, 2, 20);
+    capability.voltageMv = extractBits(packed, 10, 10) * 50;
+    capability.maxCurrentMa = extractBits(packed, 10, 0) * 10;
+    return capability;
   }
 };
 

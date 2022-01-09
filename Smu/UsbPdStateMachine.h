@@ -31,11 +31,11 @@ public:
       case kStart:
       default:
         if (!init() && !setMeasure(1)) {
-          debugInfo("UsbPdStateMachine::update(): Start -> DetectCc1");
+          debugInfo("update(): Start -> DetectCc1");
           timer_.reset();
           state_ = kDetectCc1;
         } else {
-          debugWarn("UsbPdStateMachine::update(): Start init / setMeasure failed")
+          debugWarn("update(): Start init / setMeasure failed")
         }
         break;
       case kDetectCc1:
@@ -45,7 +45,7 @@ public:
             timer_.reset();
             state_ = kDetectCc2;
           } else {
-            debugWarn("UsbPdStateMachine::update(): DetectCc1 readMeasure / setMeasure failed")
+            debugWarn("update(): DetectCc1 readMeasure / setMeasure failed")
           }
         }
         break;
@@ -62,11 +62,11 @@ public:
 
             if (setCcPin == 1 || setCcPin == 2) {
               if (!enablePdTrasceiver(setCcPin)) {
-                debugInfo("UsbPdStateMachine::update(): DetectCc2 -> Connected (CC=%i)", setCcPin);
+                debugInfo("update(): DetectCc2 -> Connected (CC=%i)", setCcPin);
                 state_ = kConnected;
                 connectionState_ = kConnectedCc2;
               } else {
-                debugWarn("UsbPdStateMachine::update(): DetectCc2 enablePdTransceiver failed")
+                debugWarn("update(): DetectCc2 enablePdTransceiver failed")
               }
             } else {
               if (!setMeasure(1)) {
@@ -74,11 +74,11 @@ public:
                 timer_.reset();
                 state_ = kDetectCc1;
               } else {
-                debugWarn("UsbPdStateMachine::update(): DetectCc2 setMeasure(1) failed")
+                debugWarn("update(): DetectCc2 setMeasure(1) failed")
               }
             }
           } else {
-            debugWarn("UsbPdStateMachine::update(): DetectCc2 readMeasure failed")
+            debugWarn("update(): DetectCc2 readMeasure failed")
           }
         }
         break;
@@ -88,31 +88,31 @@ public:
           uint8_t intVal;
           if (!(ret = fusb_.readRegister(Fusb302::Register::kInterrupt, intVal))) {
             if (intVal & Fusb302::kInterrupt::kICrcChk) {
-              debugInfo("UsbPdStateMachine::update(): Connected: ICrcChk");
+              debugInfo("update(): Connected: ICrcChk");
               processRxMessages();
             }
             if (intVal & Fusb302::kInterrupt::kIBcLvl) {
-              debugInfo("UsbPdStateMachine::update(): Connected: IBcLvl");
+              debugInfo("update(): Connected: IBcLvl");
 
               uint8_t ccMeasureLevel;
               if (!readMeasure(ccMeasureLevel)) {
                 if (ccMeasureLevel == 0) {
-                  debugInfo("UsbPdStateMachine::update(): Connected -> (reset)");
+                  debugInfo("update(): Connected -> (reset)");
                   reset();
                 }
               } else {
-                debugWarn("UsbPdStateMachine::update(): Connected: IBcLvl readMeasure failed")
+                debugWarn("update(): Connected: IBcLvl readMeasure failed")
               }
             }
           } else {
-            debugWarn("UsbPdStateMachine::update(): Connected readRegister(Interrupt) failed")
+            debugWarn("update(): Connected readRegister(Interrupt) failed")
           }
         }
         if (sourceCapabilitiesLen_ == 0) {
           int ret;
           uint16_t header = UsbPd::makeHeader(UsbPd::ControlMessageType::kGetSourceCap, 0, nextMessageId_);
           if (!(ret = fusb_.writeFifoMessage(header))) {
-            debugWarn("UsbPdStateMachine::update(): Connected writeFifoMessage(GetSourceCap, %i) failed", nextMessageId_)
+            debugWarn("update(): Connected writeFifoMessage(GetSourceCap, %i) failed", nextMessageId_)
           }
           nextMessageId_ = (nextMessageId_ + 1) % 8;
         }
@@ -150,25 +150,25 @@ protected:
     int ret;
 
     if ((ret = fusb_.writeRegister(Fusb302::Register::kReset, 0x01))) {  // reset everything
-      debugWarn("UsbPdStateMachine::init(): reset failed = %i", ret);
+      debugWarn("init(): reset failed = %i", ret);
       errorCount_ ++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
 
     if ((ret = fusb_.readId(deviceId_))) {
-      debugWarn("UsbPdStateMachine::init(): device ID failed = %i", ret);
+      debugWarn("init(): device ID failed = %i", ret);
       errorCount_ ++; return ret;
     }
     deviceIdValid_ = true;
     wait_ns(Fusb302::kStopStartDelayNs);
 
     if ((ret = fusb_.writeRegister(Fusb302::Register::kPower, 0x0f))) {  // power up everything
-      debugWarn("UsbPdStateMachine::init(): powerr failed = %i", ret);
+      debugWarn("init(): powerr failed = %i", ret);
       errorCount_ ++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);  
     if ((ret = fusb_.writeRegister(Fusb302::Register::kControl0, 0x04))) {  // unmask interrupts
-      debugWarn("UsbPdStateMachine::init(): control0 failed = %i", ret);
+      debugWarn("init(): control0 failed = %i", ret);
       errorCount_ ++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
@@ -192,23 +192,23 @@ protected:
     }
 
     if ((ret = fusb_.writeRegister(Fusb302::Register::kSwitches0, switches0Val))) {
-      debugWarn("UsbPdStateMachine::enablePdTransceiver(): switches0 failed = %i", ret);
+      debugWarn("enablePdTransceiver(): switches0 failed = %i", ret);
       errorCount_ ++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
     if ((ret = fusb_.writeRegister(Fusb302::Register::kSwitches1, switches1Val))) {
-      debugWarn("UsbPdStateMachine::enablePdTransceiver(): switches1 failed = %i", ret);
+      debugWarn("enablePdTransceiver(): switches1 failed = %i", ret);
       errorCount_ ++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
     if ((ret = fusb_.writeRegister(Fusb302::Register::kControl3, 0x07))) {  // enable auto-retry
-    debugWarn("UsbPdStateMachine::enablePdTransceiver(): control3 failed = %i", ret);
+    debugWarn("enablePdTransceiver(): control3 failed = %i", ret);
       errorCount_ ++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
 
     if ((ret = fusb_.writeRegister(Fusb302::Register::kReset, 0x02))) {  // reset PD logic
-      debugWarn("UsbPdStateMachine::enablePdTransceiver(): reset failed = %i", ret);
+      debugWarn("enablePdTransceiver(): reset failed = %i", ret);
       errorCount_ ++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
@@ -224,11 +224,11 @@ protected:
     } else if (ccPin == 2) {
       switches0Val |= 0x08;
     } else {
-      debugWarn("UsbPdStateMachine::setMeasure(): invalid ccPin arg = %i", ccPin);
+      debugWarn("setMeasure(): invalid ccPin arg = %i", ccPin);
       return -1;  // TODO better error codes
     }
     if ((ret = fusb_.writeRegister(Fusb302::Register::kSwitches0, switches0Val))) {
-      debugWarn("UsbPdStateMachine::setMeasure(): switches0 failed = %i", ret);
+      debugWarn("setMeasure(): switches0 failed = %i", ret);
       errorCount_ ++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
@@ -240,7 +240,7 @@ protected:
     uint8_t regVal;
     int ret;
     if ((ret = fusb_.readRegister(Fusb302::Register::kStatus0, regVal))) {
-      debugWarn("UsbPdStateMachine::readMeasure(): status0 failed = %i", ret);
+      debugWarn("readMeasure(): status0 failed = %i", ret);
       errorCount_ ++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
@@ -254,7 +254,7 @@ protected:
       int ret;
       uint8_t status1Val;
       if ((ret = fusb_.readRegister(Fusb302::Register::kStatus1, status1Val))) {
-        debugWarn("UsbPdStateMachine::processRxMessages(): readRegister(Status1) failed = %i", ret);
+        debugWarn("processRxMessages(): readRegister(Status1) failed = %i", ret);
         return -1;  // exit on error condition
       }
       wait_ns(Fusb302::kStopStartDelayNs);
@@ -266,7 +266,7 @@ protected:
 
       uint8_t rxData[30];
       if ((ret = fusb_.readNextRxFifo(rxData))) {
-        debugWarn("UsbPdStateMachine::processRxMessages(): readNextRxFifo failed = %i", ret);
+        debugWarn("processRxMessages(): readNextRxFifo failed = %i", ret);
         return -1;  // exit on error condition
       }
       uint16_t header = UsbPd::unpackUint16(rxData + 0);
@@ -277,7 +277,7 @@ protected:
       uint8_t messageNumDataObjects = UsbPd::extractBits(header,
           UsbPdFormat::MessageHeader::kSizeNumDataObjects, UsbPdFormat::MessageHeader::Position::kPosNumDataObjects);
       if (messageNumDataObjects > 0) {  // data message
-        debugInfo("UsbPdStateMachine::processRxMessages():  data message: id=%i, type=%03x, numData=%i", 
+        debugInfo("processRxMessages():  data message: id=%i, type=%03x, numData=%i", 
             messageId, messageType, messageNumDataObjects);
         switch (messageType) {
           case UsbPd::DataMessageType::kSourceCapabilities:
@@ -287,7 +287,7 @@ protected:
             break;
         }
       } else {  // command message
-        debugInfo("UsbPdStateMachine::processRxMessages():  command message: id=%i, type=%03x", 
+        debugInfo("processRxMessages():  command message: id=%i, type=%03x", 
             messageId, messageType);
         switch (messageType) {
           case UsbPd::ControlMessageType::kGoodCrc:
@@ -301,6 +301,19 @@ protected:
   void processRxSourceCapabilities(uint8_t numDataObjects, uint8_t rxData[]) {
     for (uint8_t i=0; i<numDataObjects; i++) {
       sourceCapabilitiesObjects_[i] = UsbPd::unpackUint32(rxData + 2 + 4*i);
+      UsbPd::Capability capability = UsbPd::unpackCapability(sourceCapabilitiesObjects_[i]);
+      if (capability.capabilitiesType == UsbPd::Capability::CapabilityType::kFixedSupply) {
+        debugInfo("processRxSourceCapabilities %i/%i 0x%08x = Fixed: %i mV, %i mA; %s %s",
+            i, numDataObjects, sourceCapabilitiesObjects_[i],
+            capability.voltageMv, capability.maxCurrentMa,
+            capability.dualRolePower ? "DualRolePower" : "NonDualRolePower",
+            capability.unconstrainedPower ? "Unconstrained" : "Constrained");
+      } else {
+        debugInfo("processRxSourceCapabilities %i/%i 0x%08x = type %i", 
+            i, numDataObjects, sourceCapabilitiesObjects_[i], 
+            capability.capabilitiesType);
+      }
+
     }
     sourceCapabilitiesLen_ = numDataObjects;
   }
