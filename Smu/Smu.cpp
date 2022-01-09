@@ -155,8 +155,44 @@ Widget* widSetContents[] = {&widSetVFrame, &widSetISrcFrame, &widSetISnkFrame};
 HGridWidget<3> widSet(widSetContents);
 
 
-NumericTextWidget pdStatus(0, 4, Font3x5, kContrastStale);
-LabelFrameWidget pdStatusFrame(&pdStatus, "USB PD", Font3x5, kContrastBackground);
+NumericTextWidget widPd1V(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
+NumericTextWidget widPd1I(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
+Widget* widPd1Contents[] = {&widPd1V, &widPd1I};
+VGridWidget<2> widPd1Grid(widPd1Contents);
+
+NumericTextWidget widPd2V(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
+NumericTextWidget widPd2I(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
+Widget* widPd2Contents[] = {&widPd2V, &widPd2I};
+VGridWidget<2> widPd2Grid(widPd2Contents);
+
+NumericTextWidget widPd3V(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
+NumericTextWidget widPd3I(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
+Widget* widPd3Contents[] = {&widPd3V, &widPd3I};
+VGridWidget<2> widPd3Grid(widPd3Contents);
+
+NumericTextWidget widPd4V(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
+NumericTextWidget widPd4I(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
+Widget* widPd4Contents[] = {&widPd4V, &widPd4I};
+VGridWidget<2> widPd4Grid(widPd4Contents);
+
+NumericTextWidget widPd5V(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
+NumericTextWidget widPd5I(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
+Widget* widPd5Contents[] = {&widPd5V, &widPd5I};
+VGridWidget<2> widPd5Grid(widPd5Contents);
+
+NumericTextWidget* widPdV[] = {&widPd1V, &widPd2V, &widPd3V, &widPd4V, &widPd5V};
+NumericTextWidget* widPdI[] = {&widPd1I, &widPd2I, &widPd3I, &widPd4I, &widPd5I};
+
+TextWidget widPdSep(" ", 0, Font5x7, kContrastStale);
+Widget* widPdContents[] = {
+  &widPd1Grid, &widPdSep,
+  &widPd2Grid, &widPdSep,
+  &widPd3Grid, &widPdSep, 
+  &widPd4Grid, &widPdSep, 
+  &widPd5Grid, &widPdSep
+};
+HGridWidget<9> widPdGrid(widPdContents);
+LabelFrameWidget pdStatusFrame(&widPdGrid, "USB PD", Font3x5, kContrastBackground);
 
 Widget* widMainContents[] = {&widVersionGrid, &widMeas, &widSet, &pdStatusFrame};
 VGridWidget<4> widMain(widMainContents);
@@ -231,6 +267,26 @@ int main() {
       //     adcv, measMv, adci, measMa, 
       //     setV, setISrc, setISnk)
       DacLdac = 1;
+
+      UsbPd::Capability pdCapabilities[8];
+      uint8_t numCapabilities = UsbPd.getCapabilities(pdCapabilities);
+      uint8_t selectedCapability = UsbPd.selectedCapability();
+      for (uint8_t i=0; i<5; i++) {
+        if (i < numCapabilities) {
+          widPdV[i]->setValue(pdCapabilities[i].voltageMv);
+          widPdI[i]->setValue(pdCapabilities[i].maxCurrentMa);
+          if (i == selectedCapability) {
+            widPdV[i]->setContrast(kContrastActive);
+            widPdI[i]->setContrast(kContrastActive);
+          } else {
+            widPdV[i]->setContrast(kContrastStale);
+            widPdI[i]->setContrast(kContrastStale);
+          }
+        } else {
+          widPdV[i]->setContrast(0);
+          widPdI[i]->setContrast(0);
+        }
+      }
 
       Lcd.clear();
       widMain.layout();

@@ -123,6 +123,21 @@ public:
     }
   }
 
+  // Gets the capabilities of the source. Returns the total count, and the unpacked capabilities are
+  // stored in the input array.
+  // Zero means no source is connected, or capabilities are not yet available.
+  // Can return up to 8 objects.
+  int getCapabilities(UsbPd::Capability capabilities[]) {
+    for (uint8_t i=0; i<sourceCapabilitiesLen_; i++) {
+      capabilities[i] = UsbPd::unpackCapability(sourceCapabilitiesObjects_[i]);
+    }
+    return sourceCapabilitiesLen_;
+  }
+
+  uint8_t selectedCapability() {
+    return selectedCapability_;
+  }
+
   uint16_t errorCount_ = 0;
 
 protected:
@@ -133,6 +148,7 @@ protected:
     nextMessageId_ = 0;
 
     sourceCapabilitiesLen_ = 0;
+    selectedCapability_ = 0;
   }
 
   // Resets and initializes the FUSB302 from an unknown state
@@ -141,25 +157,25 @@ protected:
 
     if ((ret = fusb_.writeRegister(Fusb302::Register::kReset, 0x01))) {  // reset everything
       debugWarn("init(): reset failed = %i", ret);
-      errorCount_ ++; return ret;
+      errorCount_++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
 
     if ((ret = fusb_.readId(deviceId_))) {
       debugWarn("init(): device ID failed = %i", ret);
-      errorCount_ ++; return ret;
+      errorCount_++; return ret;
     }
     deviceIdValid_ = true;
     wait_ns(Fusb302::kStopStartDelayNs);
 
     if ((ret = fusb_.writeRegister(Fusb302::Register::kPower, 0x0f))) {  // power up everything
-      debugWarn("init(): powerr failed = %i", ret);
-      errorCount_ ++; return ret;
+      debugWarn("init(): power failed = %i", ret);
+      errorCount_++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);  
     if ((ret = fusb_.writeRegister(Fusb302::Register::kControl0, 0x04))) {  // unmask interrupts
       debugWarn("init(): control0 failed = %i", ret);
-      errorCount_ ++; return ret;
+      errorCount_++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
 
@@ -183,23 +199,23 @@ protected:
 
     if ((ret = fusb_.writeRegister(Fusb302::Register::kSwitches0, switches0Val))) {
       debugWarn("enablePdTransceiver(): switches0 failed = %i", ret);
-      errorCount_ ++; return ret;
+      errorCount_++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
     if ((ret = fusb_.writeRegister(Fusb302::Register::kSwitches1, switches1Val))) {
       debugWarn("enablePdTransceiver(): switches1 failed = %i", ret);
-      errorCount_ ++; return ret;
+      errorCount_++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
     if ((ret = fusb_.writeRegister(Fusb302::Register::kControl3, 0x07))) {  // enable auto-retry
     debugWarn("enablePdTransceiver(): control3 failed = %i", ret);
-      errorCount_ ++; return ret;
+      errorCount_++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
 
     if ((ret = fusb_.writeRegister(Fusb302::Register::kReset, 0x02))) {  // reset PD logic
       debugWarn("enablePdTransceiver(): reset failed = %i", ret);
-      errorCount_ ++; return ret;
+      errorCount_++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
 
@@ -219,7 +235,7 @@ protected:
     }
     if ((ret = fusb_.writeRegister(Fusb302::Register::kSwitches0, switches0Val))) {
       debugWarn("setMeasure(): switches0 failed = %i", ret);
-      errorCount_ ++; return ret;
+      errorCount_++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
 
@@ -231,7 +247,7 @@ protected:
     int ret;
     if ((ret = fusb_.readRegister(Fusb302::Register::kStatus0, regVal))) {
       debugWarn("readMeasure(): status0 failed = %i", ret);
-      errorCount_ ++; return ret;
+      errorCount_++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
 
@@ -327,8 +343,9 @@ protected:
   // USB PD state
   uint8_t nextMessageId_;
 
-  int8_t sourceCapabilitiesLen_ = 0;
+  uint8_t sourceCapabilitiesLen_ = 0;
   uint32_t sourceCapabilitiesObjects_[UsbPdFormat::kMaxDataObjects];
+  uint8_t selectedCapability_ = 0;
 
   Fusb302& fusb_;
   DigitalIn& int_;
