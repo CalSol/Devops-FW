@@ -69,6 +69,7 @@ uint16_t kDacCenter = 2048;  // Empirically derived center value of the DAC
 // TODO also needs a linear calibration constant?
 
 DigitalIn PdInt(P0_17, PinMode::PullUp);
+InterruptIn PdIntIn(P0_17);
 I2C SharedI2c(P0_23, P0_22);  // sda, scl
 Fusb302 FusbDevice(SharedI2c);
 UsbPdStateMachine UsbPd(FusbDevice, PdInt);
@@ -198,6 +199,11 @@ Widget* widMainContents[] = {&widVersionGrid, &widMeas, &widSet, &pdStatusFrame}
 VGridWidget<4> widMain(widMainContents);
 
 
+void pdIntCallback() {
+  debugInfo("Interrupt Callback");
+  UsbPd.processInterrupt();
+}
+
 int main() {
   swdConsole.baud(115200);
 
@@ -226,6 +232,9 @@ int main() {
   TimerTicker pdReqTicker(5 * 1000, UsTimer);
   pdReqTicker.reset();
   bool reqSent = false;
+  
+  PdIntIn.fall(&pdIntCallback);
+  // TODO: callback(&UsbPdStateMachine::processInterrupt, UsbPd)
 
   while (1) {
     UsbPd.update();
@@ -341,7 +350,7 @@ int main() {
     }
 
     switch (SwitchCGesture.update()) {
-      case ButtonGesture::Gesture::kClickUp:.
+      case ButtonGesture::Gesture::kClickUp:
         UsbPd.requestCapability(3, 3000);
         selected = (selected + 1) % 3;
         break;

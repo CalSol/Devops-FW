@@ -21,117 +21,117 @@ public:
   }
 
   void update() {
+    if (compLowTimer_.read_ms() >= kCompLowResetTimeMs) {
+      debugWarn("update(): Comp low reset");
+      reset();
+    }
+
     switch (state_) {
       case kStart:
       default:
-        if (!init() && !setMeasure(1)) {
-          debugInfo("update(): Start -> DetectCc1");
+        if (!init()) {
+          debugInfo("update(): Start -> DetectCc");
           timer_.reset();
-          state_ = kDetectCc1;
+          measuringCcPin_ = -1;
+          savedCcMeasureLevel_ = -1;
+          state_ = kDetectCc;
         } else {
-          debugWarn("update(): Start init / setMeasure failed");
+          debugWarn("update(): Start init failed");
         }
         break;
-      case kDetectCc1:
-        if (timer_.read_ms() >= kMeasureTimeMs) {
-          if (!readMeasure(cc1MeasureLevel_) && !setMeasure(2)) {
-            // No debug statement here, since it rapidly alternates CC1 and CC2
-            timer_.reset();
-            state_ = kDetectCc2;
-          } else {
-            debugWarn("update(): DetectCc1 readMeasure / setMeasure failed");
-          }
-        }
-        break;
-      case kDetectCc2:
-        if (timer_.read_ms() >= kMeasureTimeMs) {
-          uint8_t cc2MeasureLevel;
-          if (!readMeasure(cc2MeasureLevel)) {
-            uint8_t setCcPin = 0;  // 0 means none
-            if (cc1MeasureLevel_ > 0 && cc1MeasureLevel_ > cc2MeasureLevel) {
-              setCcPin = 1;
-            } else if (cc2MeasureLevel > 0 && cc2MeasureLevel > cc1MeasureLevel_) {
-              setCcPin = 2;
-            }
-
-            if (setCcPin == 1 || setCcPin == 2) {
-              if (!enablePdTrasceiver(setCcPin)) {
-                debugInfo("update(): DetectCc2 -> Connected (CC=%i)", setCcPin);
-                ccPin_ = setCcPin;
-                compLowTimer_.reset();
-                compLowTimer_.stop();
-                state_ = kConnected;
-              } else {
-                debugWarn("update(): DetectCc2 enablePdTransceiver failed");
+      case kDetectCc:
+        if ((measuringCcPin_ == 1 || measuringCcPin_ == 2) && timer_.read_ms() >= kMeasureTimeMs) {  // measurerment ready
+          uint8_t measureLevel;
+          if (!readMeasure(measureLevel)) {
+            if (savedCcMeasureLevel_ != -1 && measureLevel != savedCcMeasureLevel_) {
+              // last measurement on other pin was valid, and one is higher
+              if (measureLevel > savedCcMeasureLevel_) {  // this measurement higher, use this CC pin
+                ccPin_ = measuringCcPin_;
+              } else {  // other measurement higher, use other rCC pin
+                ccPin_ = measuringCcPin_ == 1 ? 2 : 1;
               }
-            } else {
-              if (!setMeasure(1)) {
-                // No debug statement here, since it rapidly alternates CC1 and CC2
+              state_ = kEnableTransceiver;
+              debugInfo("update(): DetectCc -> EnableTransceiver (CC=%i)", ccPin_);
+            } else {  // save this measurement and swap measurement pins
+              uint8_t nextMeasureCcPin = measuringCcPin_ == 1 ? 2 : 1;
+              if (!setMeasure(nextMeasureCcPin)) {
                 timer_.reset();
-                state_ = kDetectCc1;
+                compLowTimer_.reset();
+                compLowTimer_.start();
+                savedCcMeasureLevel_ = measureLevel;
+                measuringCcPin_ = nextMeasureCcPin;
               } else {
-                debugWarn("update(): DetectCc2 setMeasure(1) failed");
+                debugWarn("update(): DetectCc setMeasure failed");
               }
             }
           } else {
-            debugWarn("update(): DetectCc2 readMeasure failed");
+            debugWarn("update(): DetectCc readMeasure failed");
           }
+        } else if (measuringCcPin_ != 1 && measuringCcPin_ != 2) {  // state entry, invalid measurement pin
+          if (!setMeasure(1)) {
+            timer_.reset();
+            measuringCcPin_ = 1;
+          } else {
+            debugWarn("update(): DetectCc setMeasure failed");
+          }
+        }
+        break;
+      case kEnableTransceiver:
+        if (!enablePdTrasceiver(ccPin_)) {
+          debugInfo("update(): EnableTransceiver -> Connected");
+          timer_.reset();
+          state_ = kWaitSourceCapabilities;
+        } else {
+          debugWarn("update(): EnableTransceiver enablePdTransceiver failed");
+        }
+        break;
+      case kWaitSourceCapabilities:
+        if (!int_) {
+          processInterrupt();
+        }
+        if (sourceCapabilitiesLen_ > 0) {
+          state_ = kConnected;
+          debugInfo("update(): WaitSourceCapabilities -> Connected");
+        } else if (timer_.read_ms() > UsbPdTiming::tTypeCSendSourceCapMsMax) {
+          state_ = kEnableTransceiver;
+          debugInfo("update(): WaitSourceCapabilities -> EnableTransceiver");
         }
         break;
       case kConnected:
         if (!int_) {
-          int ret;
-          uint8_t intVal[2];
-          if (!(ret = fusb_.readRegister(Fusb302::Register::kInterrupt, intVal[0]))) {
-            if (intVal[0] & Fusb302::kInterrupt::kICrcChk) {
-              debugInfo("update(): Connected: ICrcChk");
-              processRxMessages();
-            }
-            if (intVal[0] & Fusb302::kInterrupt::kICompChng) {
-              debugInfo("update(): Connected: ICompChng");
-
-              uint8_t compResult;
-              if (!readComp(compResult)) {
-                if (compResult == 0) {
-                  compLowTimer_.start();
-                } else {
-                  compLowTimer_.reset();
-                  compLowTimer_.stop();
-                }
-              } else {
-                debugWarn("update(): Connected: ICompChng readComp failed");
-              }
-            }
-          } else {
-            debugWarn("update(): Connected readRegister(Interrupt) failed");
-          }
-          wait_ns(Fusb302::kStopStartDelayNs);
-          if (!(ret = fusb_.readRegister(Fusb302::Register::kInterrupta, 2, intVal))) {
-            if (intVal[0] & Fusb302::kInterrupta::kIHardSent) {
-              debugInfo("update(): Connected: IHardSent");
-            }
-            if (intVal[0] & Fusb302::kInterrupta::kITxSent) {
-              debugInfo("update(): Connected: ITxSent");
-            }
-            if (intVal[0] & Fusb302::kInterrupta::kISoftRst) {
-              debugInfo("update(): Connected: ISoftRst");
-            }
-            if (intVal[0] & Fusb302::kInterrupta::kIHardRst) {
-              debugInfo("update(): Connected: IHardRst");
-            }
-            if (intVal[1] & Fusb302::kInterruptb::kIGcrcsent) {
-              debugInfo("update(): Connected: IGcrcsent");
-            }
-          } else {
-            debugWarn("update(): Connected readRegister(Interrupta/b) failed");
-          }
-          wait_ns(Fusb302::kStopStartDelayNs);
-        }
-        if (compLowTimer_.read_ms() >= kCompLowResetTimeMs) {
-          debugWarn("update(): Connected -> (reset)");
-          reset();
+          processInterrupt();
         }
         break;
+    }
+  }
+
+  void processInterrupt() {
+    int ret;
+    uint8_t intVal[2];
+    ret = fusb_.readRegister(Fusb302::Register::kInterrupt, intVal[0]);
+    wait_ns(Fusb302::kStopStartDelayNs);
+    if (!ret) {
+      if (intVal[0] & Fusb302::kInterrupt::kICrcChk) {
+        debugInfo("update(): Connected: ICrcChk");
+        processRxMessages();
+      }
+      if (intVal[0] & Fusb302::kInterrupt::kICompChng) {
+        debugInfo("update(): Connected: ICompChng");
+        uint8_t compResult;
+        if (!readComp(compResult)) {
+          if (compResult == 0) {
+            compLowTimer_.start();
+          } else {
+            compLowTimer_.reset();
+            compLowTimer_.stop();
+          }
+        } else {
+          debugWarn("update(): Connected: ICompChng readComp failed");
+        }
+        wait_ns(Fusb302::kStopStartDelayNs);
+      }
+    } else {
+      debugWarn("update(): Connected readRegister(Interrupt) failed");
     }
   }
 
@@ -193,6 +193,9 @@ protected:
 
     sourceCapabilitiesLen_ = 0;
     selectedCapability_ = 0;
+
+    compLowTimer_.stop();
+    compLowTimer_.reset();
   }
 
   // Resets and initializes the FUSB302 from an unknown state
@@ -337,6 +340,8 @@ protected:
         debugWarn("processRxMessages(): readNextRxFifo failed = %i", ret);
         return -1;  // exit on error condition
       }
+      wait_ns(Fusb302::kStopStartDelayNs);
+
       uint16_t header = UsbPd::unpackUint16(rxData + 0);
       uint8_t messageType = UsbPd::extractBits(header,
           UsbPdFormat::MessageHeader::kSizeMessageType, UsbPdFormat::MessageHeader::Position::kPosMessageType);
@@ -388,9 +393,10 @@ protected:
 
   enum UsbPdState {
     kStart,  // FSM starts here, before FUSB302 is initialized
-    kDetectCc1,  // FUSB measuring the CC1 pin
-    kDetectCc2,  // FUSB measuring the CC2 pin
-    kConnected,  // Connected, ready to accept commands
+    kDetectCc,  // alternate measuring CC1/CC2
+    kEnableTransceiver,  // reset and enable transceiver
+    kWaitSourceCapabilities,  // waiting for initial source capabilities message
+    kConnected,  // connected, ready to accept commands
   };
   UsbPdState state_ = kStart;
 
@@ -399,19 +405,22 @@ protected:
   uint8_t deviceId_;
 
   // CC detection state
-  uint8_t cc1MeasureLevel_;  // written to save the kDetectCc1 measurement state
+  int8_t savedCcMeasureLevel_;  // last measured level of the other CC pin, or -1 if not yet measured
+  int8_t measuringCcPin_;  // CC pin currently being measured
   uint8_t ccPin_;  // CC pin used for communication, only valid when connected
   
   // USB PD state
   uint8_t nextMessageId_;
 
-  uint8_t sourceCapabilitiesLen_ = 0;
-  uint32_t sourceCapabilitiesObjects_[UsbPdFormat::kMaxDataObjects];
+  // only written to from within interrupt handler
+  volatile uint8_t sourceCapabilitiesLen_ = 0;
+  volatile uint32_t sourceCapabilitiesObjects_[UsbPdFormat::kMaxDataObjects];
   uint8_t selectedCapability_ = 0;
 
   Fusb302& fusb_;
   DigitalIn& int_;
-  Timer timer_, compLowTimer_;
+  Timer timer_;
+  Timer compLowTimer_;  // only written from interrupt
 
   static const int kMeasureTimeMs = 1;  // TODO arbitrary
   static const int kCompLowResetTimeMs = 1000;  // time Vbus needs to be low to detect a disconnect; TODO arbitrary
