@@ -16,7 +16,7 @@
 //   - Shorter protocol summary: http://blog.teledynelecroy.com/2016/05/usb-type-c-and-power-delivery-messaging.html
 class Fusb302 {
 public:
-  Fusb302(I2C& i2c, DigitalIn& interrupt) : i2c_(i2c), int_(interrupt) {
+  Fusb302(I2C& i2c) : i2c_(i2c) {
   }
 
   // Single register write convenience wrapper
@@ -95,7 +95,6 @@ public:
   // Reads the next packet from the RX FIFO, returning 0 if a packet was read, or an error code otherwise.
   // bufferOut must be at least 30 bytes
   int readNextRxFifo(uint8_t bufferOut[]) {
-    uint8_t dump[4];  // CRC bytes
     uint8_t bufferInd = 0;
 
     i2c_.start();
@@ -119,7 +118,7 @@ public:
 
     uint8_t sofByte;
     sofByte = i2c_.read(true);
-    if (sofByte & kRxFifoTokenMask != kRxFifoTokens::kSop) {
+    if ((sofByte & kRxFifoTokenMask) != kRxFifoTokens::kSop) {
       return TransferResult::kUnknownRxStructure;
     }
 
@@ -201,6 +200,28 @@ public:
   };
   const uint8_t kRxFifoTokenMask = 0xe0;
 
+  enum kStatus1 {
+    kRxSop2 = 0x80,
+    kRxSop1 = 0x40,
+    kRxEmpty = 0x20,
+    kRxFull = 0x10,
+    kTxEmpty = 0x08,
+    kTxFull = 0x04,
+    kOvertemp = 0x02,
+    oOcp = 0x01l
+  };
+
+  enum kInterrupt {
+    kIVBusOk = 0x80,
+    kIActivity = 0x40,
+    kICompChng = 0x20,
+    kICrcChk = 0x10,
+    kIAlert = 0x08,
+    kIWake = 0x04,
+    kICollision = 0x02,
+    kIBcLvl = 0x01,
+  };
+
   static constexpr kFifoTokens kSopSet[4] = {
     kFifoTokens::kSop1, 
     kFifoTokens::kSop1,
@@ -208,9 +229,10 @@ public:
     kFifoTokens::kSop2,
   };
 
+  static const uint32_t kStopStartDelayNs = 500;  // 0.5us between start and stops
+
 protected:
   I2C& i2c_;
-  DigitalIn& int_;
 };
 
 #endif  // __FUSB302_H__

@@ -23,6 +23,7 @@ namespace UsbPdFormat {
       kPosExtended = 15,
     };
   }
+  const uint8_t kMaxDataObjects = 8;  // artifact of NumDataObjects size
 }
 
 class UsbPd {
@@ -73,10 +74,18 @@ public:
     return (data >> shiftBits) & ((1 << numMaskBits) - 1);
   }
 
-  // Deserialize little-endian buffer bytes into a uint16
+  // Deserialize little-endian buffer bytes into an uint16
   static constexpr inline uint16_t unpackUint16(uint8_t buffer[]) {
     return (uint16_t)buffer[0] | 
         ((uint16_t)buffer[1] << 8);
+  }
+
+  // Deserialize little-endian buffer bytes into an uint32
+  static constexpr inline uint32_t unpackUint32(uint8_t buffer[]) {
+    return (uint32_t)buffer[0] | 
+        ((uint32_t)buffer[1] << 8) |
+        ((uint32_t)buffer[2] << 16) |
+        ((uint32_t)buffer[3] << 24);
   }
 
   // Serialize a uint16 into little-endian order

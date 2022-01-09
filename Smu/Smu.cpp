@@ -15,6 +15,7 @@
 #include "Mcp4921.h"
 #include "Fusb302.h"
 #include "UsbPd.h"
+#include "UsbPdStateMachine.h"
 
 #include "St7735sGraphics.h"
 #include "DefaultFonts.h"
@@ -64,7 +65,8 @@ uint16_t kDacCenter = 2048;  // Empirically derived center value of the DAC
 
 DigitalIn PdInt(P0_17, PinMode::PullUp);
 I2C SharedI2c(P0_23, P0_22);  // sda, scl
-Fusb302 UsbPd(SharedI2c, PdInt);
+Fusb302 FusbDevice(SharedI2c);
+UsbPdStateMachine UsbPd(FusbDevice, PdInt);
 
 //
 // User interface
@@ -150,6 +152,26 @@ VGridWidget<6> widMain(widMainContents);
 int32_t kVoltRatio = 22148;  // 1000x, actually ~22.148 Vout / Vmeas
 int32_t kAmpRatio = 10000;  // 1000x, actually 10 Aout / Vmeas
 
+template<typename T> 
+class ChangeDetector {
+public:
+  ChangeDetector(T initValue): oldValue_(initValue) {
+  }
+
+  bool changed(T newValue, T& oldValue) {
+    if (newValue != oldValue_) {
+      oldValue = oldValue_;
+      oldValue_ = newValue;
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+protected:
+  T oldValue_;
+};
+
 int main() {
   swdConsole.baud(115200);
 
@@ -167,132 +189,26 @@ int main() {
   
   SharedI2c.frequency(400000);
 
-  uint8_t regOut;
-  if (!UsbPd.readId(regOut)) {
-    debugInfo("PD ID read = %02x", regOut);
-  } else {
-    debugInfo("PD ID read fail");
-  }
-  wait_ns(500);  // 0.5us between start and stops
+  ChangeDetector<int> pdIdChanged(-1);
+  ChangeDetector<UsbPdStateMachine::ConnectionState> pdConnectionChanged(UsbPdStateMachine::ConnectionState::kNotConnected);
 
-  int ret;
-  // ret = UsbPd.writeRegister(Fusb302::Register::kReset, 0x01);  // reset everything
-  // if (ret) { 
-  //   debugInfo("PD Reset Set Fail: %i", ret);
-  // }
-  // wait_ns(500);  // 0.5us between start and stops
-
-  // ret = UsbPd.writeRegister(Fusb302::Register::kReset, 0x00);  // reset everything
-  // if (ret) { 
-  //   debugInfo("PD Reset Clear Fail: %i", ret);
-  // }
-  // wait_ns(500);  // 0.5us between start and stops
-
-  ret = UsbPd.writeRegister(Fusb302::Register::kPower, 0x0f);  // power up everything
-  if (ret) {
-    debugInfo("PD Power Set Fail: %i", ret);
-  }
-  wait_ns(500);  // 0.5us between start and stops
-
-  ret = UsbPd.writeRegister(Fusb302::Register::kControl0, 0x04);  // unmask interrupts
-  if (ret) {
-    debugInfo("PD Control0 Set Fail: %i", ret);
-  }
-  wait_ns(500);  // 0.5us between start and stops
-
-  ret = UsbPd.writeRegister(Fusb302::Register::kSwitches0, 0x07);  // meas CC1
-  if (ret) {
-    debugInfo("PD Switches0 Set Fail: %i", ret);
-  }
-  wait_ns(500);  // 0.5us between start and stops
-
-  ret = UsbPd.writeRegister(Fusb302::Register::kSwitches1, 0x25);  // enable auto-CRC + transmitter CC1
-  if (ret) {
-    debugInfo("PD Switches1 Set Fail: %i", ret);
-  }
-  wait_ns(500);  // 0.5us between start and stops
-
-  ret = UsbPd.writeRegister(Fusb302::Register::kControl3, 0x07);  // enable auto-retry
-  if (ret) {
-    debugInfo("PD AutoRetry Fail: %i", ret);
-  }
-  wait_ns(500);  // 0.5us between start and stops
-
-  ret = UsbPd.writeRegister(Fusb302::Register::kReset, 0x02);  // reset PD logic
-  if (ret) { 
-    debugInfo("PD Reset Fail: %i", ret);
-  }
-  wait_ns(500);  // 0.5us between start and stops
-
-  wait_ms(100);
-
-  TimerTicker PdSendTicker(1000 * 1000, UsTimer);
-
-  uint8_t i = 0;
   while (1) {
     if (LedStatusTicker.checkExpired()) {
-      if (i == 0) {
-        StatusLed.pulse(RgbActivity::kRed);
-      } else if (i == 1) {
-        StatusLed.pulse(RgbActivity::kGreen);
-      } else if (i == 2) {
-        StatusLed.pulse(RgbActivity::kBlue);
-      }
-      i = (i + 1) % 3;
+      StatusLed.pulse(RgbActivity::kBlue);
     }
 
     StatusLed.update();
 
-    if (PdInt == 0) {
-      uint8_t pdStatus[7];
-      debugInfo("PD Int");
-      if (!(ret = UsbPd.readRegister(Fusb302::Register::kStatus0a, 7, pdStatus))) {
-        debugInfo("PD Status 0A/1A  0x %02x %02x", pdStatus[0], pdStatus[1]);
-        debugInfo("PD Interrupt A/B 0x %02x %02x", pdStatus[2], pdStatus[3]);
-        debugInfo("PD Status 0/1    0x %02x %02x", pdStatus[4], pdStatus[5]);
-        debugInfo("PD Interrupt     0x %02x", pdStatus[6]);
-      } else {
-        debugInfo("PD Status Fail = %i", ret);
-      }
+    UsbPd.update();
 
-      bool rxEmpty = (pdStatus[5] & 0x20) != 0;
-      while (!rxEmpty) {
-        uint8_t rxData[30] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-        wait_ns(500);
-        ret = UsbPd.readNextRxFifo(rxData);
-        if (ret) {
-          debugInfo("PD RX FIFO Fail: %i", ret);
-        } else {
-          debugInfo("PD RX FIFO: %02x %02x  %02x %02x %02x %02x  %02x %02x %02x %02x  %02x %02x %02x %02x", 
-              rxData[0], rxData[1], 
-              rxData[2], rxData[3], rxData[4], rxData[5], 
-              rxData[6], rxData[7], rxData[8], rxData[9], 
-              rxData[10], rxData[11], rxData[12], rxData[13]);
-        }
-
-        while (ret = UsbPd.readRegister(Fusb302::Register::kStatus1, pdStatus[5])) {
-          debugInfo("PD Status Fail = %i", ret);
-        }
-        rxEmpty = (pdStatus[5] & 0x20) != 0;
-      }
-
-      wait_ns(500);  // 0.5us between start and stops
+    int newId = UsbPd.getDeviceId(), lastId;
+    if (pdIdChanged.changed(newId, lastId)) {
+      debugInfo("PD Device ID  %02x   <=   %02x", newId, lastId)
     }
 
-    if (PdSendTicker.checkExpired()) {
-      ret = UsbPd.writeRegister(Fusb302::Register::kControl0, 0x44);  // flush TX
-      if (ret) {
-        debugInfo("PD Flush Fail: %i", ret);
-      }
-      wait_ns(500);  // 0.5us between start and stops
-
-      uint16_t header = UsbPd::makeHeader(UsbPd::ControlMessageType::kGetSourceCap, 0, 2);
-      debugInfo("PD Sending Header: %04x", header);
-      ret = UsbPd.writeFifoMessage(header);
-      if (ret) {
-        debugInfo("PD TX Fail: %i", ret);
-      }
-      wait_ns(500);  // 0.5us between start and stops
+    UsbPdStateMachine::ConnectionState connectionState = UsbPd.getConnectionState(), lastConnectionState;
+    if (pdConnectionChanged.changed(connectionState, lastConnectionState)) {
+      debugInfo("PD Connection State  %i   <=   %i", connectionState, lastConnectionState)
     }
 
     if (LcdUpdateTicker.checkExpired()) {
