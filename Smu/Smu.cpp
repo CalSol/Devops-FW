@@ -11,6 +11,8 @@
 #include "DmaSerial.h"
 #include "LongTimer.h"
 
+#include "ButtonGesture.h"
+
 #include "Mcp3201.h"
 #include "Mcp4921.h"
 #include "Fusb302.h"
@@ -59,6 +61,9 @@ Mcp4921 DacVolt(SharedSpi, DacVoltCs);
 DigitalOut EnableHigh(P0_15);  // Current source transistor enable
 DigitalOut EnableLow(P0_14);  // Current sink transistor enable
 
+int32_t kVoltRatio = 22148;  // 1000x, actually ~22.148 Vout / Vmeas
+int32_t kAmpRatio = 10000;  // 1000x, actually 10 Aout / Vmeas
+
 uint16_t kAdcCenter = 2042;  // Measured center value of the ADC
 uint16_t kDacCenter = 2048;  // Empirically derived center value of the DAC
 // TODO also needs a linear calibration constant?
@@ -80,8 +85,11 @@ RgbActivityDigitalOut StatusLed(UsTimer, LedR, LedG, LedB, false);
 TimerTicker LedStatusTicker(1 * 1000 * 1000, UsTimer);
 
 DigitalIn SwitchL(P0_24, PinMode::PullUp);
+ButtonGesture SwitchLGesture(SwitchL);
 DigitalIn SwitchR(P0_25, PinMode::PullUp);
+ButtonGesture SwitchRGesture(SwitchR);
 DigitalIn SwitchC(P0_26, PinMode::PullUp);
+ButtonGesture SwitchCGesture(SwitchC);
 
 //
 // LCD and widgets
@@ -98,6 +106,7 @@ TextWidget widVersionData("USB PD SMU", 0, Font5x7, kContrastActive);
 TextWidget widBuildData("  " __DATE__, 0, Font5x7, kContrastBackground);
 Widget* widVersionContents[] = {&widVersionData, &widBuildData};
 HGridWidget<2> widVersionGrid(widVersionContents);
+
 
 StaleNumericTextWidget widMeasV(0, 2, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 2);
 TextWidget widAdcVSep(" ", 0, Font5x7, kContrastStale);
@@ -138,41 +147,18 @@ Widget* widSetISnkContents[] = {&widSetISnk, &widDacISnkSep, &widDacISnk};
 HGridWidget<3> widSetISnkGrid(widSetISnkContents);
 LabelFrameWidget widSetISnkFrame(&widSetISnkGrid, "I SNK", Font3x5, kContrastBackground);
 
-Widget* widSetContents[] = {&widSetVFrame, &widSetISrcFrame, &widSetISnkFrame};
-HGridWidget<3> widSet(widSetContents);
+TextWidget widEnable("DIS", 0, Font5x7, kContrastStale);
 
+Widget* widSetContents[] = {&widSetVFrame, &widSetISrcFrame, &widSetISnkFrame, &widEnable};
+HGridWidget<4> widSet(widSetContents);
 
-TextWidget widBtns("U U U", 5, Font5x7, kContrastActive);
-LabelFrameWidget widBtnsFrame(&widBtns, "BTNS", Font3x5, kContrastBackground);
 
 NumericTextWidget pdStatus(0, 4, Font3x5, kContrastStale);
 LabelFrameWidget pdStatusFrame(&pdStatus, "USB PD", Font3x5, kContrastBackground);
 
-Widget* widMainContents[] = {&widVersionGrid, &widMeas, &widSet, &widBtnsFrame, &pdStatusFrame};
-VGridWidget<5> widMain(widMainContents);
+Widget* widMainContents[] = {&widVersionGrid, &widMeas, &widSet, &pdStatusFrame};
+VGridWidget<4> widMain(widMainContents);
 
-int32_t kVoltRatio = 22148;  // 1000x, actually ~22.148 Vout / Vmeas
-int32_t kAmpRatio = 10000;  // 1000x, actually 10 Aout / Vmeas
-
-template<typename T> 
-class ChangeDetector {
-public:
-  ChangeDetector(T initValue): oldValue_(initValue) {
-  }
-
-  bool changed(T newValue, T& oldValue) {
-    if (newValue != oldValue_) {
-      oldValue = oldValue_;
-      oldValue_ = newValue;
-      return true;
-    } else {
-      return false;
-    }
-  }
-
-protected:
-  T oldValue_;
-};
 
 int main() {
   swdConsole.baud(115200);
@@ -190,6 +176,12 @@ int main() {
 
   
   SharedI2c.frequency(400000);
+
+  int32_t targetV = 3300;  // mV
+  int32_t targetISrc = 100;  // mA
+  int32_t targetISnk = -100;  // mA
+  bool enabled = false;
+  uint8_t selected = 0;
 
   while (1) {
     if (LedStatusTicker.checkExpired()) {
@@ -215,21 +207,21 @@ int main() {
       widAdcI.setValue(adci);
       widMeasI.setValue(measMa);
 
-      int32_t targetV = 1250;  // mV
+
       int32_t setVOffset = (int64_t)targetV * 4096 * 1000 / kVoltRatio / 3000;
       uint16_t setV = kDacCenter - setVOffset;
       DacVolt.write_raw_u12(setV);
       widDacV.setValue(setV);
       widSetV.setValue(targetV);
 
-      int32_t targetISrc = 200;  // mA
+
       int32_t setISrcOffset = (int64_t)targetISrc * 4096 * 1000 / kAmpRatio / 3000;
       uint16_t setISrc = kDacCenter - setISrcOffset;
       DacCurrPos.write_raw_u12(setISrc);
       widDacISrc.setValue(setISrc);
       widSetISrc.setValue(targetISrc);
 
-      int32_t targetISnk = -400;  // mA
+
       int32_t setISnkOffset = (int64_t)targetISnk * 4096 * 1000 / kAmpRatio / 3000;
       uint16_t setISnk = kDacCenter - setISnkOffset;
       DacCurrNeg.write_raw_u12(setISnk);
@@ -238,29 +230,75 @@ int main() {
 
       DacLdac = 0;
 
-      EnableHigh = 1;
-      EnableLow = 1;
+      switch (SwitchLGesture.update()) {
+        case ButtonGesture::Gesture::kClickUp:
+          switch (selected) {
+            case 0:  targetV -= 100;  break;
+            case 1:  targetISrc -= 100;  break;
+            case 2:  targetISnk -= 100;  break;
+            default: break;
+          }
+          break;
+        default: break;
+      }
+      switch (SwitchRGesture.update()) {
+        case ButtonGesture::Gesture::kClickUp:
+          switch (selected) {
+            case 0:  targetV += 100;  break;
+            case 1:  targetISrc += 100;  break;
+            case 2:  targetISnk += 100;  break;
+            default: break;
+          }
+          break;
+        default: break;
+      }
 
-      SharedSpi.frequency(10000000);
+      switch (SwitchCGesture.update()) {
+        case ButtonGesture::Gesture::kClickUp:
+          selected = (selected + 1) % 3;
+          break;
+        case ButtonGesture::Gesture::kHeldTransition:
+          enabled = !enabled;
+          break;
+        default: break;
+      }
+
+      if (selected == 0) {
+        widSetVFrame.setContrast(kContrastActive);
+        widSetISrcFrame.setContrast(kContrastStale);
+        widSetISnkFrame.setContrast(kContrastStale);
+      } else if (selected == 1) {
+        widSetVFrame.setContrast(kContrastStale);
+        widSetISrcFrame.setContrast(kContrastActive);
+        widSetISnkFrame.setContrast(kContrastStale);
+      } else if (selected == 2) {
+        widSetVFrame.setContrast(kContrastStale);
+        widSetISrcFrame.setContrast(kContrastStale);
+        widSetISnkFrame.setContrast(kContrastActive);
+      } else {
+        widSetVFrame.setContrast(kContrastStale);
+        widSetISrcFrame.setContrast(kContrastStale);
+        widSetISnkFrame.setContrast(kContrastStale);
+      }
+
+      if (enabled) {
+        EnableHigh = 1;
+        widEnable.setValue("ENA");
+        widEnable.setContrast(kContrastActive);
+      } else {
+        EnableHigh = 0;
+        EnableLow = 0;
+        widEnable.setValue("DIS");
+        widEnable.setContrast(kContrastStale);
+      }
 
       // debugInfo("MeasV: %u => %li mV    MeasI: %u => %li mA    SetV: %u    SetISrc: %u    SetISnk %u", 
       //     adcv, measMv, adci, measMa, 
       //     setV, setISrc, setISnk)
 
-      char btnsText[] = "U U U";
-      if (SwitchL == 0) {
-        btnsText[0] = 'D';
-      }
-      if (SwitchR == 0) {
-        btnsText[2] = 'D';
-      }
-      if (SwitchC == 0) {
-        btnsText[4] = 'D';
-      }
-      widBtns.setValue(btnsText);
-
       widMain.layout();
       widMain.draw(Lcd, 0, 0);
+      SharedSpi.frequency(10000000);
       Lcd.update();
     }
   }
