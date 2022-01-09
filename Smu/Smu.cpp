@@ -95,6 +95,7 @@ ButtonGesture SwitchCGesture(SwitchC);
 // LCD and widgets
 //
 St7735sGraphics<160, 80, 1, 26> Lcd(SharedSpi, LcdCs, LcdRs, LcdReset);
+TimerTicker MeasureTicker(10 * 1000, UsTimer);
 TimerTicker LcdUpdateTicker(100 * 1000, UsTimer);
 
 const uint8_t kContrastActive = 255;
@@ -122,8 +123,11 @@ Widget* widMeasIContents[] = {&widMeasI, &widAdcISep, &widAdcI};
 HGridWidget<3> widMeasIGrid(widMeasIContents);
 LabelFrameWidget widMeasIFrame(&widMeasIGrid, "MEAS I", Font3x5, kContrastBackground);
 
-Widget* widMeasContents[] = {&widMeasVFrame, &widMeasIFrame};
-HGridWidget<2> widMeas(widMeasContents);
+TextWidget widEnable(" DIS ", 0, Font5x7, kContrastStale);
+LabelFrameWidget widEnableFrame(&widEnable, "ENABLE", Font3x5, kContrastBackground);
+
+Widget* widMeasContents[] = {&widMeasVFrame, &widMeasIFrame, &widEnableFrame};
+HGridWidget<3> widMeas(widMeasContents);
 
 
 StaleNumericTextWidget widSetV(0, 2, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 2);
@@ -147,10 +151,8 @@ Widget* widSetISnkContents[] = {&widSetISnk, &widDacISnkSep, &widDacISnk};
 HGridWidget<3> widSetISnkGrid(widSetISnkContents);
 LabelFrameWidget widSetISnkFrame(&widSetISnkGrid, "I SNK", Font3x5, kContrastBackground);
 
-TextWidget widEnable("DIS", 0, Font5x7, kContrastStale);
-
-Widget* widSetContents[] = {&widSetVFrame, &widSetISrcFrame, &widSetISnkFrame, &widEnable};
-HGridWidget<4> widSet(widSetContents);
+Widget* widSetContents[] = {&widSetVFrame, &widSetISrcFrame, &widSetISnkFrame};
+HGridWidget<3> widSet(widSetContents);
 
 
 NumericTextWidget pdStatus(0, 4, Font3x5, kContrastStale);
@@ -183,30 +185,27 @@ int main() {
   bool enabled = false;
   uint8_t selected = 0;
 
+  int32_t measMv, measMa;  // needed for the current limiting indicator
+
   while (1) {
-    if (LedStatusTicker.checkExpired()) {
-      StatusLed.pulse(RgbActivity::kBlue);
-    }
-
-    StatusLed.update();
-
     UsbPd.update();
 
-    if (LcdUpdateTicker.checkExpired()) {
-      DacLdac = 1;
-
+    if (MeasureTicker.checkExpired()) {  // limit the ADC read frequency to avoid impedance issues
       SharedSpi.frequency(100000);
-      
+    
       uint16_t adcv = AdcVolt.read_raw_u12();
-      int32_t measMv = ((int64_t)adcv - kAdcCenter) * 3000 * kVoltRatio / 1000 / 4096;  // in mV
+      measMv = ((int64_t)adcv - kAdcCenter) * 3000 * kVoltRatio / 1000 / 4096;  // in mV
       widAdcV.setValue(adcv);
       widMeasV.setValue(measMv);
 
       uint16_t adci = AdcCurr.read_raw_u12();
-      int32_t measMa = ((int64_t)adci - kAdcCenter) * 3000 * kAmpRatio / 1000 / 4096;  // in mA
+      measMa = ((int64_t)adci - kAdcCenter) * 3000 * kAmpRatio / 1000 / 4096;  // in mA
       widAdcI.setValue(adci);
-      widMeasI.setValue(measMa);
+      widMeasI.setValue(measMa);  
+    }
 
+    if (LcdUpdateTicker.checkExpired()) {
+      SharedSpi.frequency(100000);
 
       int32_t setVOffset = (int64_t)targetV * 4096 * 1000 / kVoltRatio / 3000;
       uint16_t setV = kDacCenter - setVOffset;
@@ -228,78 +227,100 @@ int main() {
       widDacISnk.setValue(setISnk);
       widSetISnk.setValue(targetISnk);
 
-      DacLdac = 0;
-
-      switch (SwitchLGesture.update()) {
-        case ButtonGesture::Gesture::kClickUp:
-          switch (selected) {
-            case 0:  targetV -= 100;  break;
-            case 1:  targetISrc -= 100;  break;
-            case 2:  targetISnk -= 100;  break;
-            default: break;
-          }
-          break;
-        default: break;
-      }
-      switch (SwitchRGesture.update()) {
-        case ButtonGesture::Gesture::kClickUp:
-          switch (selected) {
-            case 0:  targetV += 100;  break;
-            case 1:  targetISrc += 100;  break;
-            case 2:  targetISnk += 100;  break;
-            default: break;
-          }
-          break;
-        default: break;
-      }
-
-      switch (SwitchCGesture.update()) {
-        case ButtonGesture::Gesture::kClickUp:
-          selected = (selected + 1) % 3;
-          break;
-        case ButtonGesture::Gesture::kHeldTransition:
-          enabled = !enabled;
-          break;
-        default: break;
-      }
-
-      if (selected == 0) {
-        widSetVFrame.setContrast(kContrastActive);
-        widSetISrcFrame.setContrast(kContrastStale);
-        widSetISnkFrame.setContrast(kContrastStale);
-      } else if (selected == 1) {
-        widSetVFrame.setContrast(kContrastStale);
-        widSetISrcFrame.setContrast(kContrastActive);
-        widSetISnkFrame.setContrast(kContrastStale);
-      } else if (selected == 2) {
-        widSetVFrame.setContrast(kContrastStale);
-        widSetISrcFrame.setContrast(kContrastStale);
-        widSetISnkFrame.setContrast(kContrastActive);
-      } else {
-        widSetVFrame.setContrast(kContrastStale);
-        widSetISrcFrame.setContrast(kContrastStale);
-        widSetISnkFrame.setContrast(kContrastStale);
-      }
-
-      if (enabled) {
-        EnableHigh = 1;
-        widEnable.setValue("ENA");
-        widEnable.setContrast(kContrastActive);
-      } else {
-        EnableHigh = 0;
-        EnableLow = 0;
-        widEnable.setValue("DIS");
-        widEnable.setContrast(kContrastStale);
-      }
-
       // debugInfo("MeasV: %u => %li mV    MeasI: %u => %li mA    SetV: %u    SetISrc: %u    SetISnk %u", 
       //     adcv, measMv, adci, measMa, 
       //     setV, setISrc, setISnk)
+      DacLdac = 1;
 
+      Lcd.clear();
       widMain.layout();
       widMain.draw(Lcd, 0, 0);
       SharedSpi.frequency(10000000);
       Lcd.update();
+
+      DacLdac = 0;
     }
+
+    switch (SwitchLGesture.update()) {
+      case ButtonGesture::Gesture::kClickUp:
+        switch (selected) {
+          case 0:  targetV -= 100;  break;
+          case 1:  targetISrc -= 100;  break;
+          case 2:  targetISnk -= 100;  break;
+          default: break;
+        }
+        break;
+      default: break;
+    }
+    switch (SwitchRGesture.update()) {
+      case ButtonGesture::Gesture::kClickUp:
+        switch (selected) {
+          case 0:  targetV += 100;  break;
+          case 1:  targetISrc += 100;  break;
+          case 2:  targetISnk += 100;  break;
+          default: break;
+        }
+        break;
+      default: break;
+    }
+
+    switch (SwitchCGesture.update()) {
+      case ButtonGesture::Gesture::kClickUp:
+        selected = (selected + 1) % 3;
+        break;
+      case ButtonGesture::Gesture::kHeldTransition:
+        enabled = !enabled;
+        break;
+      default: break;
+    }
+
+    if (selected == 0) {
+      widSetVFrame.setContrast(kContrastActive);
+      widSetISrcFrame.setContrast(kContrastStale);
+      widSetISnkFrame.setContrast(kContrastStale);
+    } else if (selected == 1) {
+      widSetVFrame.setContrast(kContrastStale);
+      widSetISrcFrame.setContrast(kContrastActive);
+      widSetISnkFrame.setContrast(kContrastStale);
+    } else if (selected == 2) {
+      widSetVFrame.setContrast(kContrastStale);
+      widSetISrcFrame.setContrast(kContrastStale);
+      widSetISnkFrame.setContrast(kContrastActive);
+    } else {
+      widSetVFrame.setContrast(kContrastStale);
+      widSetISrcFrame.setContrast(kContrastStale);
+      widSetISnkFrame.setContrast(kContrastStale);
+    }
+
+    if (enabled) {
+      EnableHigh = 1;
+      widEnable.setValue(" ENA ");
+      widEnable.setContrast(kContrastActive);
+
+      if (measMv < targetV * 90 / 100) {  // guesstimate for current-limiting mode
+        if (measMa >= targetISrc * 90 / 100 || measMa <= -(targetISnk * 90 / 100)) {
+          StatusLed.setIdle(RgbActivity::kRed);
+        } else {
+          StatusLed.setIdle(RgbActivity::kPurple);
+        }
+      } else {
+        StatusLed.setIdle(RgbActivity::kGreen);
+      }
+      if (LedStatusTicker.checkExpired()) {
+        StatusLed.pulse(RgbActivity::kOff);
+      }  
+    } else {
+      EnableHigh = 0;
+      EnableLow = 0;
+      widEnable.setValue(" DIS ");
+      widEnable.setContrast(kContrastStale);
+
+      StatusLed.setIdle(RgbActivity::kOff);
+      if (LedStatusTicker.checkExpired()) {
+        StatusLed.pulse(RgbActivity::kBlue);
+      }
+    }
+
+    StatusLed.update();
   }
 }
