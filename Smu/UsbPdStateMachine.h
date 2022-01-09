@@ -20,12 +20,6 @@ public:
     timer_.start();
   }
 
-  enum ConnectionState {
-    kNotConnected,
-    kConnectedCc1,
-    kConnectedCc2,
-  };
-
   void update() {
     switch (state_) {
       case kStart:
@@ -63,8 +57,8 @@ public:
             if (setCcPin == 1 || setCcPin == 2) {
               if (!enablePdTrasceiver(setCcPin)) {
                 debugInfo("update(): DetectCc2 -> Connected (CC=%i)", setCcPin);
+                ccPin_ = setCcPin;
                 state_ = kConnected;
-                connectionState_ = kConnectedCc2;
               } else {
                 debugWarn("update(): DetectCc2 enablePdTransceiver failed")
               }
@@ -129,17 +123,13 @@ public:
     }
   }
 
-  ConnectionState getConnectionState() const {
-    return connectionState_;
-  }
-
   uint16_t errorCount_ = 0;
 
 protected:
   void reset() {
     state_ = kStart;
     deviceIdValid_ = false;
-    connectionState_ = kNotConnected;
+    ccPin_ = 0;
     nextMessageId_ = 0;
 
     sourceCapabilitiesLen_ = 0;
@@ -303,13 +293,13 @@ protected:
       sourceCapabilitiesObjects_[i] = UsbPd::unpackUint32(rxData + 2 + 4*i);
       UsbPd::Capability capability = UsbPd::unpackCapability(sourceCapabilitiesObjects_[i]);
       if (capability.capabilitiesType == UsbPd::Capability::CapabilityType::kFixedSupply) {
-        debugInfo("processRxSourceCapabilities %i/%i 0x%08x = Fixed: %i mV, %i mA; %s %s",
+        debugInfo("processRxSourceCapabilities %i/%i 0x%08lx = Fixed: %i mV, %i mA; %s %s",
             i, numDataObjects, sourceCapabilitiesObjects_[i],
             capability.voltageMv, capability.maxCurrentMa,
             capability.dualRolePower ? "DualRolePower" : "NonDualRolePower",
             capability.unconstrainedPower ? "Unconstrained" : "Constrained");
       } else {
-        debugInfo("processRxSourceCapabilities %i/%i 0x%08x = type %i", 
+        debugInfo("processRxSourceCapabilities %i/%i 0x%08lx = type %i", 
             i, numDataObjects, sourceCapabilitiesObjects_[i], 
             capability.capabilitiesType);
       }
@@ -332,8 +322,8 @@ protected:
 
   // CC detection state
   uint8_t cc1MeasureLevel_;  // written to save the kDetectCc1 measurement state
-  ConnectionState connectionState_ = kNotConnected;
-
+  uint8_t ccPin_;  // CC pin used for communication, only valid when connected
+  
   // USB PD state
   uint8_t nextMessageId_;
 

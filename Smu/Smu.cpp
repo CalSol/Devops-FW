@@ -94,8 +94,10 @@ const uint8_t kContrastStale = 191;
 
 const uint8_t kContrastBackground = 191;
 
-TextWidget widVersionData("USB PD SMU ", 0, Font5x7, kContrastActive);
-TextWidget widBuildData("  " __DATE__ " " __TIME__, 0, Font5x7, kContrastBackground);
+TextWidget widVersionData("USB PD SMU", 0, Font5x7, kContrastActive);
+TextWidget widBuildData("  " __DATE__, 0, Font5x7, kContrastBackground);
+Widget* widVersionContents[] = {&widVersionData, &widBuildData};
+HGridWidget<2> widVersionGrid(widVersionContents);
 
 StaleNumericTextWidget widMeasV(0, 2, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 2);
 TextWidget widAdcVSep(" ", 0, Font5x7, kContrastStale);
@@ -146,8 +148,8 @@ LabelFrameWidget widBtnsFrame(&widBtns, "BTNS", Font3x5, kContrastBackground);
 NumericTextWidget pdStatus(0, 4, Font3x5, kContrastStale);
 LabelFrameWidget pdStatusFrame(&pdStatus, "USB PD", Font3x5, kContrastBackground);
 
-Widget* widMainContents[] = {&widVersionData, &widBuildData, &widMeas, &widSet, &widBtnsFrame, &pdStatusFrame};
-VGridWidget<6> widMain(widMainContents);
+Widget* widMainContents[] = {&widVersionGrid, &widMeas, &widSet, &widBtnsFrame, &pdStatusFrame};
+VGridWidget<5> widMain(widMainContents);
 
 int32_t kVoltRatio = 22148;  // 1000x, actually ~22.148 Vout / Vmeas
 int32_t kAmpRatio = 10000;  // 1000x, actually 10 Aout / Vmeas
@@ -189,9 +191,6 @@ int main() {
   
   SharedI2c.frequency(400000);
 
-  ChangeDetector<int> pdIdChanged(-1);
-  ChangeDetector<UsbPdStateMachine::ConnectionState> pdConnectionChanged(UsbPdStateMachine::ConnectionState::kNotConnected);
-
   while (1) {
     if (LedStatusTicker.checkExpired()) {
       StatusLed.pulse(RgbActivity::kBlue);
@@ -200,16 +199,6 @@ int main() {
     StatusLed.update();
 
     UsbPd.update();
-
-    int newId = UsbPd.getDeviceId(), lastId;
-    if (pdIdChanged.changed(newId, lastId)) {
-      debugInfo("PD Device ID  %02x   <=   %02x", newId, lastId)
-    }
-
-    UsbPdStateMachine::ConnectionState connectionState = UsbPd.getConnectionState(), lastConnectionState;
-    if (pdConnectionChanged.changed(connectionState, lastConnectionState)) {
-      debugInfo("PD Connection State  %i   <=   %i", connectionState, lastConnectionState)
-    }
 
     if (LcdUpdateTicker.checkExpired()) {
       DacLdac = 1;
