@@ -187,21 +187,19 @@ int main() {
   UsTimer.start();
 
   Lcd.init();
-
   
   SharedI2c.frequency(400000);
 
-  int32_t targetV = 3300;  // mV
-  int32_t targetISrc = 100;  // mA
-  int32_t targetISnk = -100;  // mA
-  bool enabled = false;
+  int32_t targetV = 3300, targetISrc = 100, targetISnk = -100;  // mV, mA, mA
+  Smu.setVoltageMv(targetV);
+  Smu.setCurrentSourceMa(targetISrc);
+  Smu.setCurrentSinkMa(targetISnk);
+
   uint8_t selected = 0;
 
   int32_t measMv = 0, measMa = 0;  // needed for the current limiting indicator
   
   while (1) {
-    UsbPd.update();
-
     if (MeasureTicker.checkExpired()) {  // limit the ADC read frequency to avoid impedance issues
       SharedSpi.frequency(100000);
     
@@ -213,33 +211,6 @@ int main() {
     }
 
     if (LcdUpdateTicker.checkExpired()) {
-      SharedSpi.frequency(100000);
-
-      int32_t setVOffset = (int64_t)targetV * 4096 * 1000 / kVoltRatio / 3000;
-      uint16_t setV = kDacCenter - setVOffset;
-      DacVolt.write_raw_u12(setV);
-      widDacV.setValue(setV);
-      widSetV.setValue(targetV);
-
-
-      int32_t setISrcOffset = (int64_t)targetISrc * 4096 * 1000 / kAmpRatio / 3000;
-      uint16_t setISrc = kDacCenter - setISrcOffset;
-      DacCurrPos.write_raw_u12(setISrc);
-      widDacISrc.setValue(setISrc);
-      widSetISrc.setValue(targetISrc);
-
-
-      int32_t setISnkOffset = (int64_t)targetISnk * 4096 * 1000 / kAmpRatio / 3000;
-      uint16_t setISnk = kDacCenter - setISnkOffset;
-      DacCurrNeg.write_raw_u12(setISnk);
-      widDacISnk.setValue(setISnk);
-      widSetISnk.setValue(targetISnk);
-
-      // debugInfo("MeasV: %u => %li mV    MeasI: %u => %li mA    SetV: %u    SetISrc: %u    SetISnk %u", 
-      //     adcv, measMv, adci, measMa, 
-      //     setV, setISrc, setISnk)
-      DacLdac = 1;
-
       UsbPd::Capability pdCapabilities[8];
       uint8_t numCapabilities = UsbPd.getCapabilities(pdCapabilities);
       uint8_t currentCapability = UsbPd.currentCapability();
@@ -265,17 +236,15 @@ int main() {
       widMain.draw(Lcd, 0, 0);
       SharedSpi.frequency(10000000);
       Lcd.update();
-
-      DacLdac = 0;
     }
 
     bool voltageChanged = false;
     switch (SwitchLGesture.update()) {
       case ButtonGesture::Gesture::kClickUp:
         switch (selected) {
-          case 0:  targetV -= 100;  voltageChanged = true;  break;
-          case 1:  targetISrc -= 100;  break;
-          case 2:  targetISnk -= 100;  break;
+          case 0:  targetV -= 100;  Smu.setVoltageMv(targetV);  voltageChanged = true;  break;
+          case 1:  targetISrc -= 100;  Smu.setCurrentSourceMa(targetISrc);  break;
+          case 2:  targetISnk -= 100;  Smu.setCurrentSinkMa(targetISnk);  break;
           default: break;
         }
         break;
@@ -284,9 +253,9 @@ int main() {
     switch (SwitchRGesture.update()) {
       case ButtonGesture::Gesture::kClickUp:
         switch (selected) {
-          case 0:  targetV += 100;  voltageChanged = true;  break;
-          case 1:  targetISrc += 100;  break;
-          case 2:  targetISnk += 100;  break;
+          case 0:  targetV += 100;  Smu.setVoltageMv(targetV);  voltageChanged = true;  break;
+          case 1:  targetISrc += 100;  Smu.setCurrentSourceMa(targetISrc);  break;
+          case 2:  targetISnk += 100;  Smu.setCurrentSinkMa(targetISnk);  break;
           default: break;
         }
         break;
@@ -310,10 +279,18 @@ int main() {
         selected = (selected + 1) % 3;
         break;
       case ButtonGesture::Gesture::kHeldTransition:
-        enabled = !enabled;
+        if (Smu.getState() == SmuAnalogStage::SmuState::kEnabled) {
+          Smu.disableDriver();
+        } else {
+          Smu.enableDriver();
+        }
         break;
       default: break;
     }
+
+    widSetV.setValue(targetV);
+    widSetISrc.setValue(targetISrc);
+    widSetISnk.setValue(targetISnk);
 
     if (selected == 0) {
       widSetVFrame.setContrast(kContrastActive);
@@ -333,7 +310,7 @@ int main() {
       widSetISnkFrame.setContrast(kContrastStale);
     }
 
-    if (enabled) {
+    if (Smu.getState() == SmuAnalogStage::SmuState::kEnabled) {
       EnableHigh = 1;
       widEnable.setValue(" ENA ");
       widEnable.setContrast(kContrastActive);
@@ -361,6 +338,8 @@ int main() {
         StatusLed.pulse(RgbActivity::kBlue);
       }
     }
+
+    UsbPd.update();
 
     StatusLed.update();
   }
