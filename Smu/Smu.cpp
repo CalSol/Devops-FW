@@ -240,7 +240,8 @@ int main() {
 
     bool voltageChanged = false;
     switch (SwitchLGesture.update()) {
-      case ButtonGesture::Gesture::kClickUp:
+      case ButtonGesture::Gesture::kClickDown:
+      case ButtonGesture::Gesture::kHeldRepeat:
         switch (selected) {
           case 0:  targetV -= 100;  Smu.setVoltageMv(targetV);  voltageChanged = true;  break;
           case 1:  targetISrc -= 100;  Smu.setCurrentSourceMa(targetISrc);  break;
@@ -251,7 +252,8 @@ int main() {
       default: break;
     }
     switch (SwitchRGesture.update()) {
-      case ButtonGesture::Gesture::kClickUp:
+      case ButtonGesture::Gesture::kClickDown:
+      case ButtonGesture::Gesture::kHeldRepeat:
         switch (selected) {
           case 0:  targetV += 100;  Smu.setVoltageMv(targetV);  voltageChanged = true;  break;
           case 1:  targetISrc += 100;  Smu.setCurrentSourceMa(targetISrc);  break;
