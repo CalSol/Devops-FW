@@ -33,7 +33,7 @@ public:
     targetVoltage_ = setVoltage;
 
     if (state_ == kEnabled) {  // only write DAC immediately if enabled
-      writeVoltageMv(setVoltage);
+      writeVoltageMv(targetVoltage_);
     }
   }
 
@@ -41,29 +41,31 @@ public:
     targetCurrentSink_ = setCurrentSink;
 
     if (state_ == kEnabled) {  // only write DAC immediately if enabled
-      writeCurrentSinkMa(setCurrentSink);
+      writeCurrentSinkMa(targetCurrentSink_);
     }
   }
 
   void setCurrentSourceMa(int32_t setCurrentSource) {
-    targetCurrrentSource_ = setCurrentSource;
+    targetCurrentSource_ = setCurrentSource;
 
     if (state_ == kEnabled) {  // only write DAC immediately if enabled
-      writeCurrentSourceMa(setCurrentSource);
+      writeCurrentSourceMa(targetCurrentSource_);
     }
   }
 
   void enableDriver() {
     enableSource_ = 0;
     enableSink_ = 0;
-    if (targetVoltage_ >= readVoltageMv()) {  // likely will be sourcing current, start by enabling sink
+    if (targetVoltage_ >= readVoltageMv()) {  // likely will be sourcing current
       dacVolt_.write_u16(65535);  // command lowest voltage
-      setCurrentSourceMa(100);
-      setCurrentSinkMa(-100);
-    } else {  // likely will be sinking current, start by enabling source
+      setCurrentSourceMa(targetCurrentSource_);  // also does LDAC
+      setCurrentSinkMa(targetCurrentSink_);
+      startSourceDriver_ = true;
+    } else {  // likely will be sinking current
       dacVolt_.write_u16(0);  // command highest voltage
-      setCurrentSourceMa(100);
-      setCurrentSinkMa(-100);
+      setCurrentSourceMa(targetCurrentSource_);  // also does LDAC
+      setCurrentSinkMa(targetCurrentSink_);
+      startSourceDriver_ = false;
     }
     timer_.reset();
     state_ = kResetIntegrator;
@@ -85,11 +87,19 @@ public:
         enableSource_ = 0;
         enableSink_ = 0;
         if (timer_.read_ms() >= kIntegratorResetTimeMs) {
+          writeVoltageMv(targetVoltage_);
+          if (startSourceDriver_) {
+            enableSource_ = 1;
+          } else {
+            enableSink_ = 1;
+          }
           state_ = SmuState::kSingleEnable;
         }
         break;
       case SmuState::kSingleEnable:
         if (timer_.read_ms() >= kIntegratorResetTimeMs) {
+          enableSource_ = 1;
+          enableSink_ = 1;
           state_ = SmuState::kEnabled;
         }
         break;
@@ -142,7 +152,7 @@ protected:
     dacLdac_ = 0;
   }
 
-  int32_t targetVoltage_ = 0, targetCurrentSink_ = -100, targetCurrrentSource_ = 100;
+  int32_t targetVoltage_ = 0, targetCurrentSink_ = -100, targetCurrentSource_ = 100;
 
   SPI &sharedSpi_;
 
@@ -154,6 +164,7 @@ protected:
   DigitalOut &enableSource_, &enableSink_;
 
   SmuState state_;
+  bool startSourceDriver_;  // first driver to be enabled is source
   Timer timer_;
 
   // TODO also needs a linear calibration constant?
