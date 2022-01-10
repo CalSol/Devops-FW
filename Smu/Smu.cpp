@@ -40,8 +40,45 @@ DmaSerial<1024> swdConsole(P0_8, NC, 115200);  // TODO increase size when have m
 //
 // Comms interfaces
 //
-USBSerial UsbSerial;
-// USBHID UsbHid;
+// USBSerial UsbSerial(0x1209, 0x0001, 0x0001, false);
+class UsbHidSmu: public USBHID {
+public:
+  UsbHidSmu(uint8_t output_report_length = 64, uint8_t input_report_length = 64, bool connect = true):
+      USBHID(output_report_length, input_report_length, 0x1209, 0x0007, 0x0001, connect) {
+  }
+
+  // USB Device oerrides
+const uint8_t * stringImanufacturerDesc() {
+    static const uint8_t stringImanufacturerDescriptor[] = {
+        2 + 5*2,  // bLength
+        STRING_DESCRIPTOR,
+        'D',0,'u',0,'c',0,'k',0,'y',0
+    };
+    return stringImanufacturerDescriptor;
+}
+
+const uint8_t * stringIserialDesc() {
+    static const uint8_t stringIserialDescriptor[] = {
+        2 + 2*2,  // bLength
+        STRING_DESCRIPTOR,
+        '0',0,'1',0
+    };
+    return stringIserialDescriptor;
+}
+
+// USB HID overrides
+const uint8_t * stringIproductDesc() {
+    static const uint8_t stringIproductDescriptor[] = {
+        2 + 10*2,  // bLength
+        STRING_DESCRIPTOR,
+        'U',0,'S',0,'B',0,' ',0,'P',0,'D',0,' ',0,'S',0,'M',0,'U',0 //bString iProduct - HID device
+    };
+    return stringIproductDescriptor;
+}
+
+protected:
+};
+UsbHidSmu UsbHid(64, 64, false);
 
 //
 // System
@@ -107,18 +144,21 @@ Widget* widVersionContents[] = {&widVersionData, &widBuildData};
 HGridWidget<2> widVersionGrid(widVersionContents);
 
 
+TextWidget widEnable("     ", 0, Font5x7, kContrastStale);
+LabelFrameWidget widEnableFrame(&widEnable, "ENABLE", Font3x5, kContrastBackground);
+
 StaleNumericTextWidget widMeasV(0, 2, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 2);
 LabelFrameWidget widMeasVFrame(&widMeasV, "MEAS V", Font3x5, kContrastBackground);
 
 StaleNumericTextWidget widMeasI(0, 2, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 2);
 LabelFrameWidget widMeasIFrame(&widMeasI, "MEAS I", Font3x5, kContrastBackground);
 
-TextWidget widEnable(" DIS ", 0, Font5x7, kContrastStale);
-LabelFrameWidget widEnableFrame(&widEnable, "ENABLE", Font3x5, kContrastBackground);
-
-Widget* widMeasContents[] = {&widMeasVFrame, &widMeasIFrame, &widEnableFrame};
+Widget* widMeasContents[] = {&widEnableFrame, &widMeasVFrame, &widMeasIFrame};
 HGridWidget<3> widMeas(widMeasContents);
 
+
+TextWidget widUsb("     ", 0, Font5x7, kContrastStale);
+LabelFrameWidget widUsbFrame(&widUsb, "USB", Font3x5, kContrastBackground);
 
 StaleNumericTextWidget widSetV(0, 2, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 2);
 LabelFrameWidget widSetVFrame(&widSetV, "V", Font3x5, kContrastBackground);
@@ -129,32 +169,32 @@ LabelFrameWidget widSetISrcFrame(&widSetISrc, "I SRC", Font3x5, kContrastBackgro
 StaleNumericTextWidget widSetISnk(0, 2, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 2);
 LabelFrameWidget widSetISnkFrame(&widSetISnk, "I SNK", Font3x5, kContrastBackground);
 
-Widget* widSetContents[] = {&widSetVFrame, &widSetISrcFrame, &widSetISnkFrame};
-HGridWidget<3> widSet(widSetContents);
+Widget* widSetContents[] = {&widUsbFrame, &widSetVFrame, &widSetISrcFrame, &widSetISnkFrame};
+HGridWidget<4> widSet(widSetContents);
 
 
-NumericTextWidget widPd1V(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
-NumericTextWidget widPd1I(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
+NumericTextWidget widPd1V(0, 2, Font5x7, 0, Font3x5, 1000, 1);
+NumericTextWidget widPd1I(0, 2, Font5x7, 0, Font3x5, 1000, 1);
 Widget* widPd1Contents[] = {&widPd1V, &widPd1I};
 VGridWidget<2> widPd1Grid(widPd1Contents);
 
-NumericTextWidget widPd2V(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
-NumericTextWidget widPd2I(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
+NumericTextWidget widPd2V(0, 2, Font5x7, 0, Font3x5, 1000, 1);
+NumericTextWidget widPd2I(0, 2, Font5x7, 0, Font3x5, 1000, 1);
 Widget* widPd2Contents[] = {&widPd2V, &widPd2I};
 VGridWidget<2> widPd2Grid(widPd2Contents);
 
-NumericTextWidget widPd3V(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
-NumericTextWidget widPd3I(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
+NumericTextWidget widPd3V(0, 2, Font5x7, 0, Font3x5, 1000, 1);
+NumericTextWidget widPd3I(0, 2, Font5x7, 0, Font3x5, 1000, 1);
 Widget* widPd3Contents[] = {&widPd3V, &widPd3I};
 VGridWidget<2> widPd3Grid(widPd3Contents);
 
-NumericTextWidget widPd4V(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
-NumericTextWidget widPd4I(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
+NumericTextWidget widPd4V(0, 2, Font5x7, 0, Font3x5, 1000, 1);
+NumericTextWidget widPd4I(0, 2, Font5x7, 0, Font3x5, 1000, 1);
 Widget* widPd4Contents[] = {&widPd4V, &widPd4I};
 VGridWidget<2> widPd4Grid(widPd4Contents);
 
-NumericTextWidget widPd5V(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
-NumericTextWidget widPd5I(0, 2, Font5x7, kContrastStale, Font3x5, 1000, 1);
+NumericTextWidget widPd5V(0, 2, Font5x7, 0, Font3x5, 1000, 1);
+NumericTextWidget widPd5I(0, 2, Font5x7, 0, Font3x5, 1000, 1);
 Widget* widPd5Contents[] = {&widPd5V, &widPd5I};
 VGridWidget<2> widPd5Grid(widPd5Contents);
 
@@ -281,14 +321,18 @@ int main() {
     switch (SwitchCGesture.update()) {
       case ButtonGesture::Gesture::kClickUp:
         selected = (selected + 1) % 3;
+
+        if (UsbHid.configured()) {
+          HID_REPORT hidSend;
+          hidSend.length = 2;
+          hidSend.data[0] = 0x42;
+          hidSend.data[1] = 0x19;
+          bool hidSentResult = UsbHid.sendNB(&hidSend);
+          debugInfo("HID send: %i", hidSentResult);
+        }
+
         break;
       case ButtonGesture::Gesture::kHeldTransition:
-        // HID_REPORT hidSend;
-        // hidSend.length = 2;
-        // hidSend.data[0] = 0x42;
-        // hidSend.data[1] = 0x19;
-        // UsbHid.sendNB(&hidSend);
-
         if (Smu.getState() == SmuAnalogStage::SmuState::kEnabled) {
           Smu.disableDriver();
         } else {
@@ -298,10 +342,10 @@ int main() {
       default: break;
     }
 
-    // HID_REPORT hidRecv;
-    // if(UsbHid.readNB(&hidRecv)) {
-    //   debugInfo("Received HID: %i", hidRecv.length);
-    // }
+    HID_REPORT hidRecv;
+    if(UsbHid.configured() && UsbHid.readNB(&hidRecv)) {
+      debugInfo("Received HID: %li", hidRecv.length);
+    }
 
     widSetV.setValue(targetV);
     widSetISrc.setValue(targetISrc);
@@ -352,6 +396,15 @@ int main() {
       if (LedStatusTicker.checkExpired()) {
         StatusLed.pulse(RgbActivity::kBlue);
       }
+    }
+
+    if (UsbHid.configured()) {
+      widUsb.setValue(" HID ");
+      widUsb.setContrast(kContrastActive);
+    } else {
+      widUsb.setValue(" DIS ");
+      widUsb.setContrast(kContrastStale);
+      UsbHid.connect(false);
     }
 
     UsbPd.update();
