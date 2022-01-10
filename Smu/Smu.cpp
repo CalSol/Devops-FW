@@ -222,29 +222,9 @@ int main() {
   uint8_t selected = 0;
 
   int32_t measMv = 0, measMa = 0;  // needed for the current limiting indicator
-
-  TimerTicker pdReqTicker(5 * 1000, UsTimer);
-  pdReqTicker.reset();
-  bool reqSent = false;
   
   while (1) {
     UsbPd.update();
-
-    UsbPd::Capability pdCapabilities[8];
-    uint8_t numCapabilities = UsbPd.getCapabilities(pdCapabilities);
-    if (!numCapabilities) {
-      reqSent = false;
-    }
-    if (numCapabilities > 0 && !reqSent) {
-      // UsbPd.requestCapability(1, 3000);
-      // uint16_t header = UsbPd::makeHeader(UsbPd::ControlMessageType::kGetSourceCap, 0, 7);
-      // FusbDevice.writeFifoMessage(header);
-      reqSent = true;
-    }
-
-    // if (pdReqTicker.checkExpired()) {
-    //   UsbPd.requestCapability(2, 3000);
-    // }
 
     if (MeasureTicker.checkExpired()) {  // limit the ADC read frequency to avoid impedance issues
       SharedSpi.frequency(100000);
@@ -290,12 +270,12 @@ int main() {
 
       UsbPd::Capability pdCapabilities[8];
       uint8_t numCapabilities = UsbPd.getCapabilities(pdCapabilities);
-      uint8_t selectedCapability = UsbPd.selectedCapability();
+      uint8_t currentCapability = UsbPd.currentCapability();
       for (uint8_t i=0; i<5; i++) {
         if (i < numCapabilities) {
           widPdV[i]->setValue(pdCapabilities[i].voltageMv);
           widPdI[i]->setValue(pdCapabilities[i].maxCurrentMa);
-          if (i == selectedCapability) {
+          if (i + 1 == currentCapability) {
             widPdV[i]->setContrast(kContrastActive);
             widPdI[i]->setContrast(kContrastActive);
           } else {
@@ -342,7 +322,7 @@ int main() {
 
     switch (SwitchCGesture.update()) {
       case ButtonGesture::Gesture::kClickUp:
-        UsbPd.requestCapability(3, 3000);
+        UsbPd.requestCapability(2, 3000);
         selected = (selected + 1) % 3;
         break;
       case ButtonGesture::Gesture::kHeldTransition:

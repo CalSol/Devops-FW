@@ -166,27 +166,17 @@ public:
   // The currently active capability requested to and confirmed by the source.
   // Zero means the default (none was requested).
   // 1 is the first capability, consistent with the object position field described in the PD spec.
-  uint8_t selectedCapability() {
-    return selectedCapability_;
+  uint8_t currentCapability() {
+    return currentCapability_;
   }
 
   // Requests a capability from the source.
-  // 1 is the first capability, consistent with the object position field described in the PD spec.
+  // 
   int requestCapability(uint8_t capability, uint16_t currentMa) {
     int ret;
-    uint16_t header = UsbPd::makeHeader(UsbPd::DataMessageType::kRequest, 1, nextMessageId_);
-
-    uint32_t requestData = UsbPd::maskAndShift(capability, 3, 28) |
-        UsbPd::maskAndShift(1, 10, 24) |  // no USB suspend
-        UsbPd::maskAndShift(currentMa / 10, 10, 10) |
-        UsbPd::maskAndShift(currentMa / 10, 10, 0);
-
-    if (!(ret = fusb_.writeFifoMessage(header, 1, &requestData))) {
-      debugInfo("requestCapability(): writeFifoMessage(Request(%i), %i)", capability, nextMessageId_);
-    } else {
-      debugWarn("requestCapability(): writeFifoMessage(Request(%i), %i) failed", capability, nextMessageId_);
-    }
-    nextMessageId_ = (nextMessageId_ + 1) % 8;
+    int_.disable_irq();
+    ret = sendRequestCapability(capability, currentMa);
+    int_.enable_irq();
     return ret;
   }
 
@@ -200,7 +190,10 @@ protected:
     nextMessageId_ = 0;
 
     sourceCapabilitiesLen_ = 0;
-    selectedCapability_ = 0;
+
+    requestedCapability_ = 0;
+    currentCapability_ = 0;
+    powerStable_ = false;
 
     compLowTimer_.stop();
     compLowTimer_.reset();
@@ -373,7 +366,7 @@ protected:
       uint8_t messageNumDataObjects = UsbPd::extractBits(header,
           UsbPdFormat::MessageHeader::kSizeNumDataObjects, UsbPdFormat::MessageHeader::Position::kPosNumDataObjects);
       if (messageNumDataObjects > 0) {  // data message
-        debugInfo("processRxMessages():  data message: id=%i, type=%03x, numData=%i", 
+        debugInfo("processRxMessages(): data message: id=%i, type=%03x, numData=%i", 
             messageId, messageType, messageNumDataObjects);
         switch (messageType) {
           case UsbPd::DataMessageType::kSourceCapabilities: {
@@ -381,7 +374,7 @@ protected:
             processRxSourceCapabilities(messageNumDataObjects, rxData);
             if (isFirstMessage && sourceCapabilitiesLen_ > 0) {
               UsbPd::Capability v5vCapability = UsbPd::unpackCapability(sourceCapabilitiesObjects_[0]);
-              requestCapability(0, v5vCapability.maxCurrentMa);
+              sendRequestCapability(0, v5vCapability.maxCurrentMa);  // request the vSafe5v capability
             } else {
               // TODO this should be an error
             }
@@ -390,9 +383,19 @@ protected:
             break;
         }
       } else {  // command message
-        debugInfo("processRxMessages():  command message: id=%i, type=%03x", 
+        debugInfo("processRxMessages(): command message: id=%i, type=%03x", 
             messageId, messageType);
         switch (messageType) {
+          case UsbPd::ControlMessageType::kAccept:
+            currentCapability_ = requestedCapability_;
+            break;
+          case UsbPd::ControlMessageType::kReject:
+            requestedCapability_ = currentCapability_;
+            break;
+          case UsbPd::ControlMessageType::kPsRdy:
+            powerStable_ = true;
+            debugInfo("processRxMessages(): power ready");
+            break;
           case UsbPd::ControlMessageType::kGoodCrc:
           default:  // ignore
             break;
@@ -409,16 +412,36 @@ protected:
         debugInfo("processRxSourceCapabilities %i/%i 0x%08lx = Fixed: %i mV, %i mA; %s %s",
             i+1, numDataObjects, sourceCapabilitiesObjects_[i],
             capability.voltageMv, capability.maxCurrentMa,
-            capability.dualRolePower ? "DualRolePower" : "NonDualRolePower",
-            capability.unconstrainedPower ? "Unconstrained" : "Constrained");
+            capability.dualRolePower ? "DRP" : "nDRP",
+            capability.unconstrainedPower ? "UC" : "C");
       } else {
         debugInfo("processRxSourceCapabilities %i/%i 0x%08lx = type %i", 
             i+1, numDataObjects, sourceCapabilitiesObjects_[i], 
             capability.capabilitiesType);
       }
-
     }
     sourceCapabilitiesLen_ = numDataObjects;
+  }
+
+  // Requests a capability from the source.
+  // 1 is the first capability, consistent with the object position field described in the PD spec.
+  int sendRequestCapability(uint8_t capability, uint16_t currentMa) {
+    int ret;
+    uint16_t header = UsbPd::makeHeader(UsbPd::DataMessageType::kRequest, 1, nextMessageId_);
+
+    uint32_t requestData = UsbPd::maskAndShift(capability, 3, 28) |
+        UsbPd::maskAndShift(1, 10, 24) |  // no USB suspend
+        UsbPd::maskAndShift(currentMa / 10, 10, 10) |
+        UsbPd::maskAndShift(currentMa / 10, 10, 0);
+    if (!(ret = fusb_.writeFifoMessage(header, 1, &requestData))) {
+      requestedCapability_ = capability;
+      powerStable_ = false;
+      debugInfo("requestCapability(): writeFifoMessage(Request(%i), %i)", capability, nextMessageId_);
+    } else {
+      debugWarn("requestCapability(): writeFifoMessage(Request(%i), %i) failed", capability, nextMessageId_);
+    }
+    nextMessageId_ = (nextMessageId_ + 1) % 8;
+    return ret;
   }
 
   enum UsbPdState {
@@ -442,18 +465,21 @@ protected:
   // USB PD state
   uint8_t nextMessageId_;
 
-  // only written to from within interrupt handler
-  volatile uint8_t sourceCapabilitiesLen_ = 0;
-  volatile uint32_t sourceCapabilitiesObjects_[UsbPdFormat::kMaxDataObjects];
-  uint8_t selectedCapability_ = 0;
+  volatile uint8_t sourceCapabilitiesLen_ = 0;  // written by ISR
+  volatile uint32_t sourceCapabilitiesObjects_[UsbPdFormat::kMaxDataObjects];  // written by ISR
 
+  // 
+  uint8_t requestedCapability_;  // currently requested capability
+  volatile uint8_t currentCapability_;  // current accepted capability, 0 is default, written by ISR
+  bool powerStable_;
+  
   Fusb302& fusb_;
   InterruptIn& int_;
   Timer timer_;
   Timer compLowTimer_;  // only written from interrupt
 
   static const int kMeasureTimeMs = 1;  // TODO arbitrary
-  static const int kCompLowResetTimeMs = 1000;  // time Vbus needs to be low to detect a disconnect; TODO arbitrary
+  static const int kCompLowResetTimeMs = 50;  // time Vbus needs to be low to detect a disconnect; TODO arbitrary
   static const int kCompVBusThresholdMv = 3000;  // account for leakage from 3.3v
 };
 
