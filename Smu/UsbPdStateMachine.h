@@ -18,15 +18,29 @@ class UsbPdStateMachine {
 public:
   UsbPdStateMachine(Fusb302& fusb, InterruptIn& interrupt) : fusb_(fusb), int_(interrupt) {
     timer_.start();
-    int_.fall(callback(this, &UsbPdStateMachine::processInterrupt));
+    int_.fall(callback(this, &UsbPdStateMachine::actualInterrupt));
   }
 
   void update() {
     int_.disable_irq();
 
-    if (compLowTimer_.read_ms() >= kCompLowResetTimeMs) {
-      debugWarn("update(): Comp low reset");
-      reset();
+    if (state_ > kEnableTransceiver) {  // poll to detect COMP VBus low
+      uint8_t compResult;
+      if (!readComp(compResult)) {
+        if (compResult == 0) {
+          compLowTimer_.start();
+       } else {
+          compLowTimer_.reset();
+          compLowTimer_.stop();
+        }
+      } else {
+        debugWarn("processInterrupt(): ICompChng readComp failed");
+      }
+      wait_ns(Fusb302::kStopStartDelayNs);
+      if (compLowTimer_.read_ms() >= kCompLowResetTimeMs) {
+        debugWarn("update(): Comp low reset");
+        reset();
+      }
     }
 
     switch (state_) {
@@ -102,10 +116,16 @@ public:
     }
 
     if (!int_) {  // interrupt doesn't trigger reliably
+      debugInfo("update() polling interrupt");
       processInterrupt();
     }
 
     int_.enable_irq();
+  }
+
+  void actualInterrupt() {
+    debugInfo("actualInterrupt()");  // to distinguish from polling interrupts
+    processInterrupt();
   }
 
   void processInterrupt() {
@@ -113,31 +133,10 @@ public:
     uint8_t intVal;
     ret = fusb_.readRegister(Fusb302::Register::kInterrupt, intVal);
     wait_ns(Fusb302::kStopStartDelayNs);
-
-    if (state_ != kEnableTransceiver && state_ != kWaitSourceCapabilities && state_ != kConnected) {  // clear the interrupt and ignore
-      debugInfo("processInterrupt() ignored");
-      return;
-    }
-
     if (!ret) {
       if (intVal & Fusb302::kInterrupt::kICrcChk) {
         debugInfo("processInterrupt(): ICrcChk");
         processRxMessages();
-      }
-      if (intVal & Fusb302::kInterrupt::kICompChng) {
-        debugInfo("processInterrupt(): ICompChng");  // TODO move to polling?
-        uint8_t compResult;
-        if (!readComp(compResult)) {
-          if (compResult == 0) {
-            compLowTimer_.start();
-          } else {
-            compLowTimer_.reset();
-            compLowTimer_.stop();
-          }
-        } else {
-          debugWarn("processInterrupt(): ICompChng readComp failed");
-        }
-        wait_ns(Fusb302::kStopStartDelayNs);
       }
     } else {
       debugWarn("processInterrupt(): readRegister(Interrupt) failed");
@@ -268,7 +267,22 @@ protected:
       errorCount_++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
-    if ((ret = fusb_.writeRegister(Fusb302::Register::kControl0, 0x04))) {  // unmask interrupts
+    if ((ret = fusb_.writeRegister(Fusb302::Register::kMask, 0xef))) {  // mask interupts
+      debugWarn("enablePdTransceiver(): mask failed = %i", ret);
+      errorCount_++; return ret;
+    }
+    wait_ns(Fusb302::kStopStartDelayNs);
+    if ((ret = fusb_.writeRegister(Fusb302::Register::kMaska, 0xff))) {  // mask interupts
+      debugWarn("enablePdTransceiver(): maska failed = %i", ret);
+      errorCount_++; return ret;
+    }
+    wait_ns(Fusb302::kStopStartDelayNs);
+    if ((ret = fusb_.writeRegister(Fusb302::Register::kMaskb, 0x01))) {  // mask interupts
+      debugWarn("enablePdTransceiver(): maskb failed = %i", ret);
+      errorCount_++; return ret;
+    }
+    wait_ns(Fusb302::kStopStartDelayNs);
+    if ((ret = fusb_.writeRegister(Fusb302::Register::kControl0, 0x04))) {  // unmask global interrupt
       debugWarn("enablePdTransceiver(): control0 failed = %i", ret);
       errorCount_++; return ret;
     }
@@ -362,9 +376,16 @@ protected:
         debugInfo("processRxMessages():  data message: id=%i, type=%03x, numData=%i", 
             messageId, messageType, messageNumDataObjects);
         switch (messageType) {
-          case UsbPd::DataMessageType::kSourceCapabilities:
+          case UsbPd::DataMessageType::kSourceCapabilities: {
+            bool isFirstMessage = sourceCapabilitiesLen_ == 0;
             processRxSourceCapabilities(messageNumDataObjects, rxData);
-            break;
+            if (isFirstMessage && sourceCapabilitiesLen_ > 0) {
+              UsbPd::Capability v5vCapability = UsbPd::unpackCapability(sourceCapabilitiesObjects_[0]);
+              requestCapability(0, v5vCapability.maxCurrentMa);
+            } else {
+              // TODO this should be an error
+            }
+          } break;
           default:  // ignore
             break;
         }

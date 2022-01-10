@@ -171,7 +171,7 @@ public:
     kControl1 = 0x07,
     kControl2 = 0x08,
     kControl3 = 0x09,
-    kMask1 = 0x0A,
+    kMask = 0x0A,
     kPower = 0x0B,
     kReset = 0x0c,
     kOcPreg = 0x0d,

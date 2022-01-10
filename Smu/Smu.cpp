@@ -312,7 +312,7 @@ int main() {
       widMain.layout();
       widMain.draw(Lcd, 0, 0);
       SharedSpi.frequency(10000000);
-      // Lcd.update();
+      Lcd.update();
 
       DacLdac = 0;
     }
@@ -346,8 +346,6 @@ int main() {
         selected = (selected + 1) % 3;
         break;
       case ButtonGesture::Gesture::kHeldTransition:
-        // FusbDevice.sendHardReset();
-        FusbDevice.writeRegister(Fusb302::Register::kReset, 0x02);
         enabled = !enabled;
         break;
       default: break;
