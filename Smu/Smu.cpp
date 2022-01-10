@@ -15,6 +15,7 @@
 
 #include "Mcp3201.h"
 #include "Mcp4921.h"
+#include "SmuAnalogStage.h"
 #include "Fusb302.h"
 #include "UsbPd.h"
 #include "UsbPdStateMachine.h"
@@ -47,7 +48,6 @@ SPI SharedSpi(P0_3, P0_5, P0_6);  // mosi, miso, sclk
 
 DigitalOut DacLdac(P0_0, 1);
 DigitalOut DacCurrNegCs(P0_1, 1);
-// Mcp4921 DacCurrNeg(SharedSpi, DigitalOut(P0_1, 1));
 Mcp4921 DacCurrNeg(SharedSpi, DacCurrNegCs);
 DigitalOut DacCurrPosCs(P0_2, 1);
 Mcp4921 DacCurrPos(SharedSpi, DacCurrPosCs);
@@ -61,12 +61,8 @@ Mcp4921 DacVolt(SharedSpi, DacVoltCs);
 DigitalOut EnableHigh(P0_15);  // Current source transistor enable
 DigitalOut EnableLow(P0_14);  // Current sink transistor enable
 
-int32_t kVoltRatio = 22148;  // 1000x, actually ~22.148 Vout / Vmeas
-int32_t kAmpRatio = 10000;  // 1000x, actually 10 Aout / Vmeas
+SmuAnalogStage Smu(SharedSpi, DacVolt, DacCurrNeg, DacCurrPos, DacLdac, AdcVolt, AdcCurr, EnableHigh, EnableLow);
 
-uint16_t kAdcCenter = 2042;  // Measured center value of the ADC
-uint16_t kDacCenter = 2048;  // Empirically derived center value of the DAC
-// TODO also needs a linear calibration constant?
 
 InterruptIn PdInt(P0_17, PinMode::PullUp);
 I2C SharedI2c(P0_23, P0_22);  // sda, scl
@@ -110,18 +106,10 @@ HGridWidget<2> widVersionGrid(widVersionContents);
 
 
 StaleNumericTextWidget widMeasV(0, 2, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 2);
-TextWidget widAdcVSep(" ", 0, Font5x7, kContrastStale);
-NumericTextWidget widAdcV(0, 4, Font3x5, kContrastStale);
-Widget* widMeasVContents[] = {&widMeasV, &widAdcVSep, &widAdcV};
-HGridWidget<3> widMeasVGrid(widMeasVContents);
-LabelFrameWidget widMeasVFrame(&widMeasVGrid, "MEAS V", Font3x5, kContrastBackground);
+LabelFrameWidget widMeasVFrame(&widMeasV, "MEAS V", Font3x5, kContrastBackground);
 
 StaleNumericTextWidget widMeasI(0, 2, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 2);
-TextWidget widAdcISep(" ", 0, Font5x7, kContrastStale);
-NumericTextWidget widAdcI(0, 4, Font3x5, kContrastStale);
-Widget* widMeasIContents[] = {&widMeasI, &widAdcISep, &widAdcI};
-HGridWidget<3> widMeasIGrid(widMeasIContents);
-LabelFrameWidget widMeasIFrame(&widMeasIGrid, "MEAS I", Font3x5, kContrastBackground);
+LabelFrameWidget widMeasIFrame(&widMeasI, "MEAS I", Font3x5, kContrastBackground);
 
 TextWidget widEnable(" DIS ", 0, Font5x7, kContrastStale);
 LabelFrameWidget widEnableFrame(&widEnable, "ENABLE", Font3x5, kContrastBackground);
@@ -131,25 +119,13 @@ HGridWidget<3> widMeas(widMeasContents);
 
 
 StaleNumericTextWidget widSetV(0, 2, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 2);
-TextWidget widDacVSep(" ", 0, Font5x7, kContrastStale);
-NumericTextWidget widDacV(0, 4, Font3x5, kContrastStale);
-Widget* widSetVContents[] = {&widSetV, &widDacVSep, &widDacV};
-HGridWidget<3> widSetVGrid(widSetVContents);
-LabelFrameWidget widSetVFrame(&widSetVGrid, "V", Font3x5, kContrastBackground);
+LabelFrameWidget widSetVFrame(&widSetV, "V", Font3x5, kContrastBackground);
 
 StaleNumericTextWidget widSetISrc(0, 2, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 2);
-TextWidget widDacISrcSep(" ", 0, Font5x7, kContrastStale);
-NumericTextWidget widDacISrc(0, 4, Font3x5, kContrastStale);
-Widget* widSetISrcCntents[] = {&widSetISrc, &widDacISrcSep, &widDacISrc};
-HGridWidget<3> widSetISrcGrid(widSetISrcCntents);
-LabelFrameWidget widSetISrcFrame(&widSetISrcGrid, "I SRC", Font3x5, kContrastBackground);
+LabelFrameWidget widSetISrcFrame(&widSetISrc, "I SRC", Font3x5, kContrastBackground);
 
 StaleNumericTextWidget widSetISnk(0, 2, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 2);
-TextWidget widDacISnkSep(" ", 0, Font5x7, kContrastStale);
-NumericTextWidget widDacISnk(0, 4, Font3x5, kContrastStale);
-Widget* widSetISnkContents[] = {&widSetISnk, &widDacISnkSep, &widDacISnk};
-HGridWidget<3> widSetISnkGrid(widSetISnkContents);
-LabelFrameWidget widSetISnkFrame(&widSetISnkGrid, "I SNK", Font3x5, kContrastBackground);
+LabelFrameWidget widSetISnkFrame(&widSetISnk, "I SNK", Font3x5, kContrastBackground);
 
 Widget* widSetContents[] = {&widSetVFrame, &widSetISrcFrame, &widSetISnkFrame};
 HGridWidget<3> widSet(widSetContents);
@@ -229,14 +205,10 @@ int main() {
     if (MeasureTicker.checkExpired()) {  // limit the ADC read frequency to avoid impedance issues
       SharedSpi.frequency(100000);
     
-      uint16_t adcv = AdcVolt.read_raw_u12();
-      measMv = ((int64_t)adcv - kAdcCenter) * 3000 * kVoltRatio / 1000 / 4096;  // in mV
-      widAdcV.setValue(adcv);
+      measMv = Smu.readVoltageMv();
       widMeasV.setValue(measMv);
 
-      uint16_t adci = AdcCurr.read_raw_u12();
-      measMa = ((int64_t)adci - kAdcCenter) * 3000 * kAmpRatio / 1000 / 4096;  // in mA
-      widAdcI.setValue(adci);
+      measMa = Smu.readCurrentMa();
       widMeasI.setValue(measMa);  
     }
 
