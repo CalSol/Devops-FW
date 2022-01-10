@@ -187,7 +187,7 @@ int main() {
   UsTimer.start();
 
   Lcd.init();
-  
+
   SharedI2c.frequency(400000);
 
   int32_t targetV = 3300, targetISrc = 100, targetISnk = -100;  // mV, mA, mA
@@ -340,6 +340,7 @@ int main() {
     }
 
     UsbPd.update();
+    Smu.update();
 
     StatusLed.update();
   }

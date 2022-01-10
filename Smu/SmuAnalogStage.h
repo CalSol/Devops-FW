@@ -30,38 +30,45 @@ public:
   }
 
   void setVoltageMv(int32_t setVoltage) {
-    sharedSpi_.frequency(100000);
-    int32_t setVOffset = (int64_t)setVoltage * 4096 * 1000 / kVoltRatio / 3000;
-    uint16_t dac = kDacCenter - setVOffset;
-    dacVolt_.write_raw_u12(dac);
-    dacLdac_ = 1;
-    wait_us(5);
-    dacLdac_ = 0;
+    targetVoltage_ = setVoltage;
+
+    if (state_ == kEnabled) {  // only write DAC immediately if enabled
+      writeVoltageMv(setVoltage);
+    }
   }
+
   void setCurrentSinkMa(int32_t setCurrentSink) {
-    sharedSpi_.frequency(100000);
-    int32_t setISnkOffset = (int64_t)setCurrentSink * 4096 * 1000 / kAmpRatio / 3000;
-    uint16_t dac = kDacCenter - setISnkOffset;
-    dacCurrNeg_.write_raw_u12(dac);
-    dacLdac_ = 1;
-    wait_us(5);
-    dacLdac_ = 0;
+    targetCurrentSink_ = setCurrentSink;
+
+    if (state_ == kEnabled) {  // only write DAC immediately if enabled
+      writeCurrentSinkMa(setCurrentSink);
+    }
   }
+
   void setCurrentSourceMa(int32_t setCurrentSource) {
-    sharedSpi_.frequency(100000);
-    int32_t setISrcOffset = (int64_t)setCurrentSource * 4096 * 1000 / kAmpRatio / 3000;
-    uint16_t dac = kDacCenter - setISrcOffset;
-    dacCurrPos_.write_raw_u12(dac);
-    dacLdac_ = 1;
-    wait_us(5);
-    dacLdac_ = 0;
+    targetCurrrentSource_ = setCurrentSource;
+
+    if (state_ == kEnabled) {  // only write DAC immediately if enabled
+      writeCurrentSourceMa(setCurrentSource);
+    }
   }
 
   void enableDriver() {
-    enableSource_ = 1;
-    enableSink_ = 1;
-    state_ = kEnabled;
+    enableSource_ = 0;
+    enableSink_ = 0;
+    if (targetVoltage_ >= readVoltageMv()) {  // likely will be sourcing current, start by enabling sink
+      dacVolt_.write_u16(65535);  // command lowest voltage
+      setCurrentSourceMa(100);
+      setCurrentSinkMa(-100);
+    } else {  // likely will be sinking current, start by enabling source
+      dacVolt_.write_u16(0);  // command highest voltage
+      setCurrentSourceMa(100);
+      setCurrentSinkMa(-100);
+    }
+    timer_.reset();
+    state_ = kResetIntegrator;
   }
+
   void disableDriver() {
     enableSource_ = 0;
     enableSink_ = 0;
@@ -69,13 +76,35 @@ public:
   }
 
   void update() {
-
+    switch (state_) {
+      case SmuState::kDisabled:
+        enableSource_ = 0;
+        enableSink_ = 0;
+        break;
+      case SmuState::kResetIntegrator:
+        enableSource_ = 0;
+        enableSink_ = 0;
+        if (timer_.read_ms() >= kIntegratorResetTimeMs) {
+          state_ = SmuState::kSingleEnable;
+        }
+        break;
+      case SmuState::kSingleEnable:
+        if (timer_.read_ms() >= kIntegratorResetTimeMs) {
+          state_ = SmuState::kEnabled;
+        }
+        break;
+      case SmuState::kEnabled:
+        enableSource_ = 1;
+        enableSink_ = 1;
+        break;
+    }
   }
 
   enum SmuState {
-    kDisabled,
-    kResetIntegrator,
-    kEnabled,
+    kDisabled,  // both drivers off
+    kResetIntegrator,  // both drivers off, rail the integrator
+    kSingleEnable,  // enable a single driver to stabilize the integrator
+    kEnabled,  // both drivers active
   };
 
   SmuState getState() {
@@ -83,6 +112,38 @@ public:
   }
 
 protected:
+  void writeVoltageMv(int32_t setVoltage) {
+    sharedSpi_.frequency(1000000);
+    int32_t setVOffset = (int64_t)setVoltage * 4096 * 1000 / kVoltRatio / 3000;
+    uint16_t dac = kDacCenter - setVOffset;
+    dacVolt_.write_raw_u12(dac);
+    dacLdac_ = 1;
+    wait_us(1);
+    dacLdac_ = 0;
+  }
+
+  void writeCurrentSinkMa(int32_t setCurrentSink) {
+    sharedSpi_.frequency(1000000);
+    int32_t setISnkOffset = (int64_t)setCurrentSink * 4096 * 1000 / kAmpRatio / 3000;
+    uint16_t dac = kDacCenter - setISnkOffset;
+    dacCurrNeg_.write_raw_u12(dac);
+    dacLdac_ = 1;
+    wait_us(1);
+    dacLdac_ = 0;
+  }
+
+  void writeCurrentSourceMa(int32_t setCurrentSource) {
+    sharedSpi_.frequency(1000000);
+    int32_t setISrcOffset = (int64_t)setCurrentSource * 4096 * 1000 / kAmpRatio / 3000;
+    uint16_t dac = kDacCenter - setISrcOffset;
+    dacCurrPos_.write_raw_u12(dac);
+    dacLdac_ = 1;
+    wait_us(1);
+    dacLdac_ = 0;
+  }
+
+  int32_t targetVoltage_ = 0, targetCurrentSink_ = -100, targetCurrrentSource_ = 100;
+
   SPI &sharedSpi_;
 
   Mcp4921 &dacVolt_, &dacCurrNeg_, &dacCurrPos_;
