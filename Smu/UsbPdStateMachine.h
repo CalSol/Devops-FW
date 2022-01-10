@@ -16,11 +16,14 @@
  */
 class UsbPdStateMachine {
 public:
-  UsbPdStateMachine(Fusb302& fusb, DigitalIn& interrupt) : fusb_(fusb), int_(interrupt) {
+  UsbPdStateMachine(Fusb302& fusb, InterruptIn& interrupt) : fusb_(fusb), int_(interrupt) {
     timer_.start();
+    int_.fall(callback(this, &UsbPdStateMachine::processInterrupt));
   }
 
   void update() {
+    int_.disable_irq();
+
     if (compLowTimer_.read_ms() >= kCompLowResetTimeMs) {
       debugWarn("update(): Comp low reset");
       reset();
@@ -78,7 +81,7 @@ public:
         break;
       case kEnableTransceiver:
         if (!enablePdTrasceiver(ccPin_)) {
-          debugInfo("update(): EnableTransceiver -> Connected");
+          debugInfo("update(): EnableTransceiver -> WaitSourceCapabilities");
           timer_.reset();
           state_ = kWaitSourceCapabilities;
         } else {
@@ -86,9 +89,6 @@ public:
         }
         break;
       case kWaitSourceCapabilities:
-        if (!int_) {
-          processInterrupt();
-        }
         if (sourceCapabilitiesLen_ > 0) {
           state_ = kConnected;
           debugInfo("update(): WaitSourceCapabilities -> Connected");
@@ -98,25 +98,34 @@ public:
         }
         break;
       case kConnected:
-        if (!int_) {
-          processInterrupt();
-        }
         break;
     }
+
+    if (!int_) {  // interrupt doesn't trigger reliably
+      processInterrupt();
+    }
+
+    int_.enable_irq();
   }
 
   void processInterrupt() {
     int ret;
-    uint8_t intVal[2];
-    ret = fusb_.readRegister(Fusb302::Register::kInterrupt, intVal[0]);
+    uint8_t intVal;
+    ret = fusb_.readRegister(Fusb302::Register::kInterrupt, intVal);
     wait_ns(Fusb302::kStopStartDelayNs);
+
+    if (state_ != kEnableTransceiver && state_ != kWaitSourceCapabilities && state_ != kConnected) {  // clear the interrupt and ignore
+      debugInfo("processInterrupt() ignored");
+      return;
+    }
+
     if (!ret) {
-      if (intVal[0] & Fusb302::kInterrupt::kICrcChk) {
-        debugInfo("update(): Connected: ICrcChk");
+      if (intVal & Fusb302::kInterrupt::kICrcChk) {
+        debugInfo("processInterrupt(): ICrcChk");
         processRxMessages();
       }
-      if (intVal[0] & Fusb302::kInterrupt::kICompChng) {
-        debugInfo("update(): Connected: ICompChng");
+      if (intVal & Fusb302::kInterrupt::kICompChng) {
+        debugInfo("processInterrupt(): ICompChng");  // TODO move to polling?
         uint8_t compResult;
         if (!readComp(compResult)) {
           if (compResult == 0) {
@@ -126,12 +135,12 @@ public:
             compLowTimer_.stop();
           }
         } else {
-          debugWarn("update(): Connected: ICompChng readComp failed");
+          debugWarn("processInterrupt(): ICompChng readComp failed");
         }
         wait_ns(Fusb302::kStopStartDelayNs);
       }
     } else {
-      debugWarn("update(): Connected readRegister(Interrupt) failed");
+      debugWarn("processInterrupt(): readRegister(Interrupt) failed");
     }
   }
 
@@ -225,11 +234,6 @@ protected:
       errorCount_++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);  
-    if ((ret = fusb_.writeRegister(Fusb302::Register::kControl0, 0x04))) {  // unmask interrupts
-      debugWarn("init(): control0 failed = %i", ret);
-      errorCount_++; return ret;
-    }
-    wait_ns(Fusb302::kStopStartDelayNs);
 
     return 0;
   }
@@ -261,6 +265,11 @@ protected:
     wait_ns(Fusb302::kStopStartDelayNs);
     if ((ret = fusb_.writeRegister(Fusb302::Register::kControl3, 0x07))) {  // enable auto-retry
     debugWarn("enablePdTransceiver(): control3 failed = %i", ret);
+      errorCount_++; return ret;
+    }
+    wait_ns(Fusb302::kStopStartDelayNs);
+    if ((ret = fusb_.writeRegister(Fusb302::Register::kControl0, 0x04))) {  // unmask interrupts
+      debugWarn("enablePdTransceiver(): control0 failed = %i", ret);
       errorCount_++; return ret;
     }
     wait_ns(Fusb302::kStopStartDelayNs);
@@ -418,7 +427,7 @@ protected:
   uint8_t selectedCapability_ = 0;
 
   Fusb302& fusb_;
-  DigitalIn& int_;
+  InterruptIn& int_;
   Timer timer_;
   Timer compLowTimer_;  // only written from interrupt
 
