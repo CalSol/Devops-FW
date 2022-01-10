@@ -95,7 +95,7 @@ ButtonGesture SwitchCGesture(SwitchC);
 // LCD and widgets
 //
 St7735sGraphics<160, 80, 1, 26> Lcd(SharedSpi, LcdCs, LcdRs, LcdReset);
-TimerTicker MeasureTicker(10 * 1000, UsTimer);
+TimerTicker MeasureTicker(50 * 1000, UsTimer);
 TimerTicker LcdUpdateTicker(100 * 1000, UsTimer);
 
 const uint8_t kContrastActive = 255;
@@ -297,10 +297,11 @@ int main() {
       DacLdac = 0;
     }
 
+    bool voltageChanged = false;
     switch (SwitchLGesture.update()) {
       case ButtonGesture::Gesture::kClickUp:
         switch (selected) {
-          case 0:  targetV -= 100;  break;
+          case 0:  targetV -= 100;  voltageChanged = true;  break;
           case 1:  targetISrc -= 100;  break;
           case 2:  targetISnk -= 100;  break;
           default: break;
@@ -311,7 +312,7 @@ int main() {
     switch (SwitchRGesture.update()) {
       case ButtonGesture::Gesture::kClickUp:
         switch (selected) {
-          case 0:  targetV += 100;  break;
+          case 0:  targetV += 100;  voltageChanged = true;  break;
           case 1:  targetISrc += 100;  break;
           case 2:  targetISnk += 100;  break;
           default: break;
@@ -320,9 +321,20 @@ int main() {
       default: break;
     }
 
+    if (voltageChanged) {
+      UsbPd::Capability pdCapabilities[8];
+      uint8_t numCapabilities = UsbPd.getCapabilities(pdCapabilities);
+      uint8_t currentCapability = UsbPd.currentCapability();  // note, 1-indexed!
+      if (currentCapability > 1 && pdCapabilities[currentCapability - 2].voltageMv >= targetV + 1500) {
+        UsbPd.requestCapability(currentCapability - 1, pdCapabilities[currentCapability - 2].maxCurrentMa);
+      } else if (currentCapability < numCapabilities && 
+          pdCapabilities[currentCapability - 1].voltageMv < targetV + 1500) {
+        UsbPd.requestCapability(currentCapability + 1, pdCapabilities[currentCapability].maxCurrentMa);
+      }
+    }
+
     switch (SwitchCGesture.update()) {
       case ButtonGesture::Gesture::kClickUp:
-        UsbPd.requestCapability(2, 3000);
         selected = (selected + 1) % 3;
         break;
       case ButtonGesture::Gesture::kHeldTransition:
