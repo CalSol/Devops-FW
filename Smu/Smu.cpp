@@ -1,6 +1,7 @@
 #include <cstdio>
 
 #include "USBSerial.h"
+#include "USBHID.h"
 
 #define DEBUG_ENABLED
 #include "debug.h"
@@ -39,7 +40,8 @@ DmaSerial<1024> swdConsole(P0_8, NC, 115200);  // TODO increase size when have m
 //
 // Comms interfaces
 //
-// USBSerial UsbSerial;
+USBSerial UsbSerial;
+// USBHID UsbHid;
 
 //
 // System
@@ -281,6 +283,12 @@ int main() {
         selected = (selected + 1) % 3;
         break;
       case ButtonGesture::Gesture::kHeldTransition:
+        // HID_REPORT hidSend;
+        // hidSend.length = 2;
+        // hidSend.data[0] = 0x42;
+        // hidSend.data[1] = 0x19;
+        // UsbHid.sendNB(&hidSend);
+
         if (Smu.getState() == SmuAnalogStage::SmuState::kEnabled) {
           Smu.disableDriver();
         } else {
@@ -289,6 +297,11 @@ int main() {
         break;
       default: break;
     }
+
+    // HID_REPORT hidRecv;
+    // if(UsbHid.readNB(&hidRecv)) {
+    //   debugInfo("Received HID: %i", hidRecv.length);
+    // }
 
     widSetV.setValue(targetV);
     widSetISrc.setValue(targetISrc);
