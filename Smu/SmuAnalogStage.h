@@ -58,15 +58,13 @@ public:
     enableSink_ = 0;
     if (targetVoltage_ >= readVoltageMv()) {  // likely will be sourcing current
       dacVolt_.write_u16(65535);  // command lowest voltage
-      setCurrentSourceMa(targetCurrentSource_);  // also does LDAC
-      setCurrentSinkMa(targetCurrentSink_);
       startSourceDriver_ = true;
     } else {  // likely will be sinking current
       dacVolt_.write_u16(0);  // command highest voltage
-      setCurrentSourceMa(targetCurrentSource_);  // also does LDAC
-      setCurrentSinkMa(targetCurrentSink_);
       startSourceDriver_ = false;
     }
+    writeCurrentSourceMa(targetCurrentSource_);  // also does LDAC
+    writeCurrentSinkMa(targetCurrentSink_);
     timer_.reset();
     state_ = kResetIntegrator;
   }
