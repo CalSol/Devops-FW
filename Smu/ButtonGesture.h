@@ -41,12 +41,12 @@ public:
         pressTimer_.reset();
         result = Gesture::kClickDown;
       } else {  // up edge
-        isLongPress_ = false;
         if (isLongPress_) {
           result = Gesture::kHeldUp;
         } else {
           result = Gesture::kClickUp;
         }
+        isLongPress_ = false;
       }
     } else {  // holding
       if (!newDebounceState) {  // held down
