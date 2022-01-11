@@ -321,16 +321,6 @@ int main() {
     switch (SwitchCGesture.update()) {
       case ButtonGesture::Gesture::kClickUp:
         selected = (selected + 1) % 3;
-
-        if (UsbHid.configured()) {
-          HID_REPORT hidSend;
-          hidSend.length = 2;
-          hidSend.data[0] = 0x42;
-          hidSend.data[1] = 0x19;
-          bool hidSentResult = UsbHid.sendNB(&hidSend);
-          debugInfo("HID send: %i", hidSentResult);
-        }
-
         break;
       case ButtonGesture::Gesture::kHeldTransition:
         if (Smu.getState() == SmuAnalogStage::SmuState::kEnabled) {
