@@ -1,5 +1,5 @@
 {
-    "requires": ["bare-metal", "sd", "filesystem", "fat_chan"],
+    
     "target_overrides": {
         "LPC1549": {
             "target.features_add": ["STORAGE"],
