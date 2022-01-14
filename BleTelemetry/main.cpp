@@ -20,7 +20,7 @@
 #include "ble/services/HealthThermometerService.h"
 #include "pretty_printer.h"
 #include <MCP2515.h>
-#include <CAN3.h>
+
 DigitalOut led1(LED1, 1);
 
 const static char DEVICE_NAME[] = "Therm";
