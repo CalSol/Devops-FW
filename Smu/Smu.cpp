@@ -106,7 +106,7 @@ SmuAnalogStage Smu(SharedSpi, DacVolt, DacCurrNeg, DacCurrPos, DacLdac, AdcVolt,
 InterruptIn PdInt(P0_17, PinMode::PullUp);
 I2C SharedI2c(P0_23, P0_22);  // sda, scl
 Fusb302 FusbDevice(SharedI2c);
-UsbPdStateMachine UsbPd(FusbDevice, PdInt);
+UsbPdStateMachine UsbPdFsm(FusbDevice, PdInt);
 
 //
 // User interface
@@ -253,9 +253,9 @@ int main() {
     }
 
     if (LcdUpdateTicker.checkExpired()) {
-      UsbPd::Capability pdCapabilities[8];
-      uint8_t numCapabilities = UsbPd.getCapabilities(pdCapabilities);
-      uint8_t currentCapability = UsbPd.currentCapability();
+      UsbPd::Capability::Unpacked pdCapabilities[8];
+      uint8_t numCapabilities = UsbPdFsm.getCapabilities(pdCapabilities);
+      uint8_t currentCapability = UsbPdFsm.currentCapability();
       for (uint8_t i=0; i<5; i++) {
         if (i < numCapabilities) {
           widPdV[i]->setValue(pdCapabilities[i].voltageMv);
@@ -307,14 +307,14 @@ int main() {
     }
 
     if (voltageChanged) {
-      UsbPd::Capability pdCapabilities[8];
-      uint8_t numCapabilities = UsbPd.getCapabilities(pdCapabilities);
-      uint8_t currentCapability = UsbPd.currentCapability();  // note, 1-indexed!
+      UsbPd::Capability::Unpacked pdCapabilities[8];
+      uint8_t numCapabilities = UsbPdFsm.getCapabilities(pdCapabilities);
+      uint8_t currentCapability = UsbPdFsm.currentCapability();  // note, 1-indexed!
       if (currentCapability > 1 && pdCapabilities[currentCapability - 2].voltageMv >= targetV + 1500) {
-        UsbPd.requestCapability(currentCapability - 1, pdCapabilities[currentCapability - 2].maxCurrentMa);
+        UsbPdFsm.requestCapability(currentCapability - 1, pdCapabilities[currentCapability - 2].maxCurrentMa);
       } else if (currentCapability < numCapabilities && 
           pdCapabilities[currentCapability - 1].voltageMv < targetV + 1500) {
-        UsbPd.requestCapability(currentCapability + 1, pdCapabilities[currentCapability].maxCurrentMa);
+        UsbPdFsm.requestCapability(currentCapability + 1, pdCapabilities[currentCapability].maxCurrentMa);
       }
     }
 
@@ -397,7 +397,7 @@ int main() {
       UsbHid.connect(false);
     }
 
-    UsbPd.update();
+    UsbPdFsm.update();
     Smu.update();
 
     StatusLed.update();

@@ -1,5 +1,6 @@
 #include <mbed.h>
 
+#include "UsbPd.h"
 #include "Fusb302.h"
 
 
@@ -32,7 +33,7 @@ public:
   // stored in the input array.
   // Zero means no source is connected, or capabilities are not yet available.
   // Can return up to 8 objects.
-  int getCapabilities(UsbPd::Capability capabilities[]);
+  int getCapabilities(UsbPd::Capability::Unpacked capabilities[]);
 
   // The currently active capability requested to and confirmed by the source.
   // Zero means the default (none was requested).
@@ -90,7 +91,7 @@ protected:
   uint8_t nextMessageId_;
 
   volatile uint8_t sourceCapabilitiesLen_ = 0;  // written by ISR
-  volatile uint32_t sourceCapabilitiesObjects_[UsbPdFormat::kMaxDataObjects];  // written by ISR
+  volatile uint32_t sourceCapabilitiesObjects_[UsbPd::MessageHeader::kMaxDataObjects];  // written by ISR
 
   // 
   uint8_t requestedCapability_;  // currently requested capability

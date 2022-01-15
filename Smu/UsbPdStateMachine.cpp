@@ -136,9 +136,9 @@ int UsbPdStateMachine::getDeviceId() const {
   }
 }
 
-int UsbPdStateMachine::getCapabilities(UsbPd::Capability capabilities[]) {
+int UsbPdStateMachine::getCapabilities(UsbPd::Capability::Unpacked capabilities[]) {
   for (uint8_t i=0; i<sourceCapabilitiesLen_; i++) {
-    capabilities[i] = UsbPd::unpackCapability(sourceCapabilitiesObjects_[i]);
+    capabilities[i] = UsbPd::Capability::unpack(sourceCapabilitiesObjects_[i]);
   }
   return sourceCapabilitiesLen_;
 }
@@ -329,21 +329,18 @@ int UsbPdStateMachine::processRxMessages() {
     wait_ns(Fusb302::kStopStartDelayNs);
 
     uint16_t header = UsbPd::unpackUint16(rxData + 0);
-    uint8_t messageType = UsbPd::extractBits(header,
-        UsbPdFormat::MessageHeader::kSizeMessageType, UsbPdFormat::MessageHeader::Position::kPosMessageType);
-    uint8_t messageId = UsbPd::extractBits(header,
-        UsbPdFormat::MessageHeader::kSizeMessageId, UsbPdFormat::MessageHeader::Position::kPosMessageId);
-    uint8_t messageNumDataObjects = UsbPd::extractBits(header,
-        UsbPdFormat::MessageHeader::kSizeNumDataObjects, UsbPdFormat::MessageHeader::Position::kPosNumDataObjects);
+    uint8_t messageType = UsbPd::MessageHeader::unpackMessageType(header);
+    uint8_t messageId = UsbPd::MessageHeader::unpackMessageId(header);
+    uint8_t messageNumDataObjects = UsbPd::MessageHeader::unpackNumDataObjects(header);
     if (messageNumDataObjects > 0) {  // data message
       debugInfo("processRxMessages(): data message: id=%i, type=%03x, numData=%i", 
           messageId, messageType, messageNumDataObjects);
       switch (messageType) {
-        case UsbPd::DataMessageType::kSourceCapabilities: {
+        case UsbPd::MessageHeader::DataType::kSourceCapabilities: {
           bool isFirstMessage = sourceCapabilitiesLen_ == 0;
           processRxSourceCapabilities(messageNumDataObjects, rxData);
           if (isFirstMessage && sourceCapabilitiesLen_ > 0) {
-            UsbPd::Capability v5vCapability = UsbPd::unpackCapability(sourceCapabilitiesObjects_[0]);
+            UsbPd::Capability::Unpacked v5vCapability = UsbPd::Capability::unpack(sourceCapabilitiesObjects_[0]);
             sendRequestCapability(0, v5vCapability.maxCurrentMa);  // request the vSafe5v capability
           } else {
             // TODO this should be an error
@@ -356,17 +353,17 @@ int UsbPdStateMachine::processRxMessages() {
       debugInfo("processRxMessages(): command message: id=%i, type=%03x", 
           messageId, messageType);
       switch (messageType) {
-        case UsbPd::ControlMessageType::kAccept:
+        case UsbPd::MessageHeader::ControlType::kAccept:
           currentCapability_ = requestedCapability_;
           break;
-        case UsbPd::ControlMessageType::kReject:
+        case UsbPd::MessageHeader::ControlType::kReject:
           requestedCapability_ = currentCapability_;
           break;
-        case UsbPd::ControlMessageType::kPsRdy:
+        case UsbPd::MessageHeader::ControlType::kPsRdy:
           powerStable_ = true;
           debugInfo("processRxMessages(): power ready");
           break;
-        case UsbPd::ControlMessageType::kGoodCrc:
+        case UsbPd::MessageHeader::ControlType::kGoodCrc:
         default:  // ignore
           break;
       }
@@ -377,8 +374,8 @@ int UsbPdStateMachine::processRxMessages() {
 void UsbPdStateMachine::processRxSourceCapabilities(uint8_t numDataObjects, uint8_t rxData[]) {
   for (uint8_t i=0; i<numDataObjects; i++) {
     sourceCapabilitiesObjects_[i] = UsbPd::unpackUint32(rxData + 2 + 4*i);
-    UsbPd::Capability capability = UsbPd::unpackCapability(sourceCapabilitiesObjects_[i]);
-    if (capability.capabilitiesType == UsbPd::Capability::CapabilityType::kFixedSupply) {
+    UsbPd::Capability::Unpacked capability = UsbPd::Capability::unpack(sourceCapabilitiesObjects_[i]);
+    if (capability.capabilitiesType == UsbPd::Capability::Type::kFixedSupply) {
       debugInfo("processRxSourceCapabilities %i/%i 0x%08lx = Fixed: %i mV, %i mA; %s %s",
           i+1, numDataObjects, sourceCapabilitiesObjects_[i],
           capability.voltageMv, capability.maxCurrentMa,
@@ -395,7 +392,7 @@ void UsbPdStateMachine::processRxSourceCapabilities(uint8_t numDataObjects, uint
 
 int UsbPdStateMachine::sendRequestCapability(uint8_t capability, uint16_t currentMa) {
   int ret;
-  uint16_t header = UsbPd::makeHeader(UsbPd::DataMessageType::kRequest, 1, nextMessageId_);
+  uint16_t header = UsbPd::MessageHeader::pack(UsbPd::MessageHeader::DataType::kRequest, 1, nextMessageId_);
 
   uint32_t requestData = UsbPd::maskAndShift(capability, 3, 28) |
       UsbPd::maskAndShift(1, 10, 24) |  // no USB suspend

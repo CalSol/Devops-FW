@@ -104,8 +104,7 @@ int Fusb302::readNextRxFifo(uint8_t bufferOut[]) {
   bufferOut[0] = i2c_.read(true);
   bufferOut[1] = i2c_.read(true);
   uint16_t header = UsbPd::unpackUint16(bufferOut + 0);
-  uint16_t numDataObjects = UsbPd::extractBits(header,
-      UsbPdFormat::MessageHeader::kSizeNumDataObjects, UsbPdFormat::MessageHeader::kPosNumDataObjects);
+  uint16_t numDataObjects = UsbPd::MessageHeader::unpackNumDataObjects(header);
   bufferInd += 2;
 
   // Read out additional data objects
