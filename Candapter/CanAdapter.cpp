@@ -120,15 +120,25 @@ int main() {
   Lcd.init();
   LcdLed = 1;
 
+  uint8_t usbIndex = 0, canIndex = 0;
   while (!SwitchUsb || !SwitchCan) {
-    UsbStatusLed.setIdle(RgbActivity::kWhite);
-    CanStatusLed.setIdle(RgbActivity::kWhite);
-
     if (UsbStatusTicker.checkExpired()) {  // to show liveness when there's no other activity
-      UsbStatusLed.pulse(RgbActivity::kOff);
+      switch (usbIndex) {
+        case 1:  UsbStatusLed.pulse(RgbActivity::kRed);  break;
+        case 2:  UsbStatusLed.pulse(RgbActivity::kGreen);  break;
+        case 3:  UsbStatusLed.pulse(RgbActivity::kBlue);  break;
+        default:  UsbStatusLed.pulse(RgbActivity::kOff);  break;
+      }
+      usbIndex = (usbIndex + 1) % 4;
     }
     if (CanStatTicker.checkExpired()) {  // to show liveness when there's no other activity
-      CanStatusLed.pulse(RgbActivity::kOff);
+      switch (canIndex) {
+        case 1:  CanStatusLed.pulse(RgbActivity::kRed);  break;
+        case 2:  CanStatusLed.pulse(RgbActivity::kGreen);  break;
+        case 3:  CanStatusLed.pulse(RgbActivity::kBlue);  break;
+        default:  CanStatusLed.pulse(RgbActivity::kOff);  break;
+      }
+      canIndex = (canIndex + 1) % 4;
     }
 
     if (LcdTicker.checkExpired()) {
@@ -142,8 +152,6 @@ int main() {
     CanStatusLed.update();
   }
   CanCheckTicker.reset();
-  UsbStatusLed.setIdle(RgbActivity::kOff);
-  CanStatusLed.setIdle(RgbActivity::kOff);
 
   // Allow the SLCAN interface to transmit messages
   Slcan.setTransmitHandler(&transmitCANMessage);
