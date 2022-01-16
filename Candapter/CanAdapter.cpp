@@ -91,11 +91,12 @@ Widget* widCanOverviewContents[] = {&widCanRxFrame, &widCanErrFrame};
 HGridWidget<2> widCanOverview(widCanOverviewContents);
 
 Widget* widMainContents[] = {&widVersionGrid, &widCanOverview};
-VGridWidget<3> widMain(widMainContents);
+VGridWidget<2> widMain(widMainContents);
+
 
 TextWidget widBootData("BOOT", 0, Font5x7, kContrastActive);
 Widget* widBootContents[] = {&widVersionGrid, &widBootData};
-VGridWidget<3> widBoot(widBootContents);
+VGridWidget<2> widBoot(widBootContents);
 
 
 // Helper to allow the host to send CAN messages
@@ -131,6 +132,7 @@ int main() {
     }
 
     if (LcdTicker.checkExpired()) {
+      Lcd.clear();
       widBoot.layout();
       widBoot.draw(Lcd, 0, 0);
       Lcd.update();
@@ -140,7 +142,8 @@ int main() {
     CanStatusLed.update();
   }
   CanCheckTicker.reset();
-
+  UsbStatusLed.setIdle(RgbActivity::kOff);
+  CanStatusLed.setIdle(RgbActivity::kOff);
 
   // Allow the SLCAN interface to transmit messages
   Slcan.setTransmitHandler(&transmitCANMessage);
@@ -209,6 +212,7 @@ int main() {
     }
 
     if (LcdTicker.checkExpired()) {
+      Lcd.clear();
       widMain.layout();
       widMain.draw(Lcd, 0, 0);
       Lcd.update();
