@@ -9,17 +9,18 @@
 class ButtonGesture {
 public:
   enum Gesture {
-    kUp,  // repeatedly emitted when up
-    kClickDown,  // emitted on down edge
-    kDown,  // repeatedly emitted when held, when short enough to not be a long press
-    kClickUp,  // emitted on up edge, if short enough to not be a long press
-    kHeldTransition,  // emitted when held long enough to be a long press
-    kHeld,  // repeatedly emitted when held past the long click duration
-    kHeldRepeat,  // emitted periodically when held down
-    kHeldUp,  // emitted on the up edge, if long enough to be a long press
+    kUp,  // repeatedly emitted when not pressed (up)
+    kClickPress,  // emitted on press edge (up to down)
+    kDown,  // repeatedly emitted when pressed, but not held long enough to be a long press
+    kClickRelease,  // emitted on release edge (down to up), when not held long enough to be a long press
+    kHoldTransition,  // emitted once when held long enough to be a long press
+    kHold,  // repeatedly emitted when held long enough to be a long press
+    kHoldRepeat,  // emitted periodically (every holdRepeatMs) when held long enough to e a long press
+    kHoldRelease,  // emitted on release edge (down to up), when held long enough to be a long press
   };
 
-  ButtonGesture(DigitalIn& din) : din_(din) {
+  ButtonGesture(DigitalIn& din, int clickTimeMs=700, int holdRepeatMs=100, int debounceTimeMs=50) :
+      din_(din), clickTimeMs_(clickTimeMs), holdRepeatMs_(holdRepeatMs), debounceTimeMs_(debounceTimeMs) {
     debounceTimer_.start();
     pressTimer_.start();
   }
@@ -28,7 +29,7 @@ public:
     bool buttonState = din_;
     bool newDebounceState = debouncedState_;
     if (buttonState != debouncedState_) {
-      if (debounceTimer_.read_ms() > debounceDurationMs_) {
+      if (debounceTimer_.read_ms() > debounceTimeMs_) {
         newDebounceState = buttonState;
       }
     } else {
@@ -39,27 +40,27 @@ public:
     if (newDebounceState != debouncedState_) {  // edge
       if (!newDebounceState) {  // down edge
         pressTimer_.reset();
-        result = Gesture::kClickDown;
+        result = Gesture::kClickPress;
       } else {  // up edge
         if (isLongPress_) {
-          result = Gesture::kHeldUp;
+          result = Gesture::kHoldRelease;
         } else {
-          result = Gesture::kClickUp;
+          result = Gesture::kClickRelease;
         }
         isLongPress_ = false;
       }
     } else {  // holding
       if (!newDebounceState) {  // held down
-        if (!isLongPress_ && pressTimer_.read_ms() > clickDurationMs_) {  // new long press
+        if (!isLongPress_ && pressTimer_.read_ms() > clickTimeMs_) {  // new long press
           isLongPress_ = true;
           pressTimer_.reset();
-          result = Gesture::kHeldTransition;
+          result = Gesture::kHoldTransition;
         } else if (isLongPress_) {  // holding previous long press
           if (pressTimer_.read_ms() > holdRepeatMs_) {
             pressTimer_.reset();
-            result = Gesture::kHeldRepeat;
+            result = Gesture::kHoldRepeat;
           } else {
-            result = Gesture::kHeld;
+            result = Gesture::kHold;
           }
         } else {  // not long press
           result = Gesture::kDown;
@@ -75,15 +76,15 @@ public:
 protected:
   DigitalIn& din_;
   
-  uint16_t clickDurationMs_ = 700;  // duration boundary between click and click-and-hold
-  uint16_t holdRepeatMs_ = 100;  // duration between generating hold repeat events
-  uint16_t debounceDurationMs_ = 50;  // duration to debounce edge - must be stable for this long to register change
-
-  bool debouncedState_ = true;  // inverted logic, true is up
-  bool isLongPress_ = false;
+  int clickTimeMs_;  // duration boundary between click and click-and-hold
+  int holdRepeatMs_;  // duration between generating hold repeat events
+  int debounceTimeMs_;  // duration to debounce edge - must be stable for this long to register change
 
   Timer debounceTimer_;
   Timer pressTimer_;
+
+  bool debouncedState_ = true;  // inverted logic, true is up
+  bool isLongPress_ = false;
 };
 
 #endif  // __BUTTON_GESTURE_H__

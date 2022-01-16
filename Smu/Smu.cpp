@@ -282,8 +282,8 @@ int main() {
 
     bool voltageChanged = false;
     switch (SwitchLGesture.update()) {
-      case ButtonGesture::Gesture::kClickDown:
-      case ButtonGesture::Gesture::kHeldRepeat:
+      case ButtonGesture::Gesture::kClickPress:
+      case ButtonGesture::Gesture::kHoldRepeat:
         switch (selected) {
           case 0:  targetV -= 100;  Smu.setVoltageMv(targetV);  voltageChanged = true;  break;
           case 1:  targetISrc -= 100;  Smu.setCurrentSourceMa(targetISrc);  break;
@@ -294,8 +294,8 @@ int main() {
       default: break;
     }
     switch (SwitchRGesture.update()) {
-      case ButtonGesture::Gesture::kClickDown:
-      case ButtonGesture::Gesture::kHeldRepeat:
+      case ButtonGesture::Gesture::kClickPress:
+      case ButtonGesture::Gesture::kHoldRepeat:
         switch (selected) {
           case 0:  targetV += 100;  Smu.setVoltageMv(targetV);  voltageChanged = true;  break;
           case 1:  targetISrc += 100;  Smu.setCurrentSourceMa(targetISrc);  break;
@@ -319,10 +319,10 @@ int main() {
     }
 
     switch (SwitchCGesture.update()) {
-      case ButtonGesture::Gesture::kClickUp:
+      case ButtonGesture::Gesture::kClickRelease:
         selected = (selected + 1) % 3;
         break;
-      case ButtonGesture::Gesture::kHeldTransition:
+      case ButtonGesture::Gesture::kHoldTransition:
         if (Smu.getState() == SmuAnalogStage::SmuState::kEnabled) {
           Smu.disableDriver();
         } else {
