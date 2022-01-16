@@ -131,7 +131,7 @@ int main() {
       }
       usbIndex = (usbIndex + 1) % 4;
     }
-    if (CanStatTicker.checkExpired()) {  // to show liveness when there's no other activity
+    if (CanCheckTicker.checkExpired()) {  // to show liveness when there's no other activity
       switch (canIndex) {
         case 1:  CanStatusLed.pulse(RgbActivity::kRed);  break;
         case 2:  CanStatusLed.pulse(RgbActivity::kGreen);  break;
@@ -151,7 +151,7 @@ int main() {
     UsbStatusLed.update();
     CanStatusLed.update();
   }
-  CanCheckTicker.reset();
+  CanStatTicker.reset();
 
   // Allow the SLCAN interface to transmit messages
   Slcan.setTransmitHandler(&transmitCANMessage);
