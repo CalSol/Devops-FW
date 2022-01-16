@@ -77,7 +77,7 @@ const uint8_t kContrastStale = 191;
 const uint8_t kContrastBackground = 191;
 
 TextWidget widVersionData("CAN ADAPTER ", 0, Font5x7, kContrastActive);
-TextWidget widBuildData("  " __DATE__ " " __TIME__, 0, Font5x7, kContrastBackground);
+TextWidget widBuildData("  " __DATE__, 0, Font5x7, kContrastBackground);
 Widget* widVersionContents[] = {&widVersionData, &widBuildData};
 HGridWidget<2> widVersionGrid(widVersionContents);
 
