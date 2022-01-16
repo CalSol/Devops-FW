@@ -20,13 +20,13 @@ public:
 
   int32_t readVoltageMv() {
     sharedSpi_.frequency(100000);  // TODO refactor into Mcp* classes
-    uint16_t adc = adcVolt_.read_raw_u12();
-    return ((int64_t)adc - kAdcCenter) * 3000 * kVoltRatio / 1000 / 4096;  // in mV    
+    uint16_t adc = adcVolt_.read_u16();
+    return ((int64_t)adc - kAdcCenter) * kVrefMv * kVoltRatio / 1000 / 65535;  // in mV
   }
   int32_t readCurrentMa() {
     sharedSpi_.frequency(100000);
-    uint16_t adc = adcCurr_.read_raw_u12();
-    return ((int64_t)adc - kAdcCenter) * 3000 * kAmpRatio / 1000 / 4096;  // in mA
+    uint16_t adc = adcCurr_.read_u16();
+    return ((int64_t)adc - kAdcCenter) * kVrefMv * kAmpRatio / 1000 / 65535;  // in mA
   }
 
   void setVoltageMv(int32_t setVoltage) {
@@ -122,9 +122,9 @@ public:
 protected:
   void writeVoltageMv(int32_t setVoltage) {
     sharedSpi_.frequency(1000000);
-    int32_t setVOffset = (int64_t)setVoltage * 4096 * 1000 / kVoltRatio / 3000;
+    int32_t setVOffset = (int64_t)setVoltage * 65535 * 1000 / kVoltRatio / kVrefMv;
     uint16_t dac = kDacCenter - setVOffset;
-    dacVolt_.write_raw_u12(dac);
+    dacVolt_.write_u16(dac);
     dacLdac_ = 1;
     wait_us(1);
     dacLdac_ = 0;
@@ -132,9 +132,9 @@ protected:
 
   void writeCurrentSinkMa(int32_t setCurrentSink) {
     sharedSpi_.frequency(1000000);
-    int32_t setISnkOffset = (int64_t)setCurrentSink * 4096 * 1000 / kAmpRatio / 3000;
+    int32_t setISnkOffset = (int64_t)setCurrentSink * 65535 * 1000 / kAmpRatio / kVrefMv;
     uint16_t dac = kDacCenter - setISnkOffset;
-    dacCurrNeg_.write_raw_u12(dac);
+    dacCurrNeg_.write_u16(dac);
     dacLdac_ = 1;
     wait_us(1);
     dacLdac_ = 0;
@@ -142,9 +142,9 @@ protected:
 
   void writeCurrentSourceMa(int32_t setCurrentSource) {
     sharedSpi_.frequency(1000000);
-    int32_t setISrcOffset = (int64_t)setCurrentSource * 4096 * 1000 / kAmpRatio / 3000;
+    int32_t setISrcOffset = (int64_t)setCurrentSource * 65535 * 1000 / kAmpRatio / kVrefMv;
     uint16_t dac = kDacCenter - setISrcOffset;
-    dacCurrPos_.write_raw_u12(dac);
+    dacCurrPos_.write_u16(dac);
     dacLdac_ = 1;
     wait_us(1);
     dacLdac_ = 0;
@@ -168,9 +168,10 @@ protected:
   // TODO also needs a linear calibration constant?
   static const int32_t kVoltRatio = 22148;  // 1000x, actually ~22.148 Vout / Vmeas
   static const int32_t kAmpRatio = 10000;  // 1000x, actually 10 Aout / Vmeas
+  static const int32_t kVrefMv = 3000;  // Vref voltage
 
-  static const uint16_t kAdcCenter = 2042;  // Measured center value of the ADC
-  static const uint16_t kDacCenter = 2048;  // Empirically derived center value of the DAC
+  static const uint16_t kAdcCenter = 2042 * 65535 / 4095;  // Measured center value of the ADC
+  static const uint16_t kDacCenter = 2048 * 65535 / 4095;  // Empirically derived center value of the DAC
 
   static const uint16_t kIntegratorResetTimeMs = 10;  // time to reset the integrator
 };
