@@ -45,6 +45,9 @@ TimerTicker CanCheckTicker(1 * 1000 * 1000, UsTimer);
 NonBlockingUSBSerial UsbSerial(0x1209, 0x0001, 0x0001, false);
 USBSLCANSlave Slcan(UsbSerial);
 
+DigitalIn SwitchUsb(P0_17, PinMode::PullUp);
+DigitalIn SwitchCan(P0_29, PinMode::PullUp);
+
 //
 // Debugging defs
 //
@@ -75,6 +78,8 @@ const uint8_t kContrastBackground = 191;
 
 TextWidget widVersionData("CAN ADAPTER ", 0, Font5x7, kContrastActive);
 TextWidget widBuildData("  " __DATE__ " " __TIME__, 0, Font5x7, kContrastBackground);
+Widget* widVersionContents[] = {&widVersionData, &widBuildData};
+HGridWidget<2> widVersionGrid(widVersionContents);
 
 StaleNumericTextWidget widCanRx(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale);
 LabelFrameWidget widCanRxFrame(&widCanRx, "RX", Font3x5, kContrastBackground);
@@ -85,8 +90,12 @@ LabelFrameWidget widCanErrFrame(&widCanErr, "ERR", Font3x5, kContrastBackground)
 Widget* widCanOverviewContents[] = {&widCanRxFrame, &widCanErrFrame};
 HGridWidget<2> widCanOverview(widCanOverviewContents);
 
-Widget* widMainContents[] = {&widVersionData, &widBuildData, &widCanOverview};
+Widget* widMainContents[] = {&widVersionGrid, &widCanOverview};
 VGridWidget<3> widMain(widMainContents);
+
+TextWidget widBootData("BOOT", 0, Font5x7, kContrastActive);
+Widget* widBootContents[] = {&widVersionGrid, &widBootData};
+VGridWidget<3> widBoot(widBootContents);
 
 
 // Helper to allow the host to send CAN messages
@@ -109,6 +118,29 @@ int main() {
 
   Lcd.init();
   LcdLed = 1;
+
+  while (!SwitchUsb || !SwitchCan) {
+    UsbStatusLed.setIdle(RgbActivity::kWhite);
+    CanStatusLed.setIdle(RgbActivity::kWhite);
+
+    if (UsbStatusTicker.checkExpired()) {  // to show liveness when there's no other activity
+      UsbStatusLed.pulse(RgbActivity::kOff);
+    }
+    if (CanStatTicker.checkExpired()) {  // to show liveness when there's no other activity
+      CanStatusLed.pulse(RgbActivity::kOff);
+    }
+
+    if (LcdTicker.checkExpired()) {
+      widBoot.layout();
+      widBoot.draw(Lcd, 0, 0);
+      Lcd.update();
+    }
+
+    UsbStatusLed.update();
+    CanStatusLed.update();
+  }
+  CanCheckTicker.reset();
+
 
   // Allow the SLCAN interface to transmit messages
   Slcan.setTransmitHandler(&transmitCANMessage);
