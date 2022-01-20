@@ -318,9 +318,17 @@ int main() {
       }
     }
 
+    HID_REPORT send_report;
     switch (SwitchCGesture.update()) {
       case ButtonGesture::Gesture::kClickRelease:
         selected = (selected + 1) % 3;
+
+        send_report.length = 3;
+        send_report.data[0] = 0x42;
+        send_report.data[1] = 0x5A;
+        send_report.data[2] = 0xA5;
+        UsbHid.sendNB(&send_report);
+
         break;
       case ButtonGesture::Gesture::kHoldTransition:
         if (Smu.getState() == SmuAnalogStage::SmuState::kEnabled) {
