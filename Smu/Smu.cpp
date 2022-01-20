@@ -319,6 +319,7 @@ int main() {
     }
 
     HID_REPORT send_report;
+    bool result = false;
     switch (SwitchCGesture.update()) {
       case ButtonGesture::Gesture::kClickRelease:
         selected = (selected + 1) % 3;
@@ -327,7 +328,8 @@ int main() {
         send_report.data[0] = 0x42;
         send_report.data[1] = 0x5A;
         send_report.data[2] = 0xA5;
-        UsbHid.sendNB(&send_report);
+        result = UsbHid.send(&send_report);
+        debugInfo("Sent HID: r=%i ", result);
 
         break;
       case ButtonGesture::Gesture::kHoldTransition:
@@ -342,7 +344,18 @@ int main() {
 
     HID_REPORT hidRecv;
     if(UsbHid.configured() && UsbHid.readNB(&hidRecv)) {
-      debugInfo("Received HID: %li", hidRecv.length);
+      debugInfo("Received HID: l=%li d=%02x %02x %02x %02x", hidRecv.length, 
+          hidRecv.data[0], hidRecv.data[1], hidRecv.data[2], hidRecv.data[3]);
+
+        send_report.length = 64;
+        send_report.data[0] = 0x42;
+        send_report.data[1] = 0x5A;
+        send_report.data[2] = 0xA5;
+        send_report.data[3] = 0xA5;
+        send_report.data[4] = 0xA5;
+        result = UsbHid.send(&send_report);
+        debugInfo("Sent HID: r=%i ", result);
+
     }
 
     widSetV.setValue(targetV);
