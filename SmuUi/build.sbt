@@ -12,7 +12,7 @@ libraryDependencies ++= Seq(
 
   "org.scalatest" %% "scalatest" % "3.2.0" % "test",
   
-  "org.hid4java" && "hid4java" % "0.7.0", 
+  "org.hid4java" %% "hid4java" % "0.7.0", 
 )
 
 // JavaFX binary detection, from https://github.com/scalafx/ScalaFX-Tutorials/blob/master/hello-sbt/build.sbt
