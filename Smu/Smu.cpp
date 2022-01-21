@@ -323,17 +323,17 @@ int main() {
       }
     }
 
-    HID_REPORT send_report;
+    HID_REPORT sendHidReport;
     bool result = false;
     switch (SwitchCGesture.update()) {
       case ButtonGesture::Gesture::kClickRelease:
         selected = (selected + 1) % 3;
 
-        send_report.length = 3;
-        send_report.data[0] = 0x42;
-        send_report.data[1] = 0x5A;
-        send_report.data[2] = 0xA5;
-        result = UsbHid.send(&send_report);
+        sendHidReport.length = 3;
+        sendHidReport.data[0] = 0x42;
+        sendHidReport.data[1] = 0x5A;
+        sendHidReport.data[2] = 0xA5;
+        result = UsbHid.send(&sendHidReport);
         debugInfo("Sent HID: r=%i ", result);
 
         break;
@@ -349,28 +349,28 @@ int main() {
 
     HID_REPORT receivedHidReport;
     if(UsbHid.configured() && UsbHid.readNB(&receivedHidReport)) {
-      size_t length = receivedHidReport.data[0];
-      pb_istream_t stream = pb_istream_from_buffer(receivedHidReport.data[1], length);
+      pb_istream_t stream = pb_istream_from_buffer(receivedHidReport.data, receivedHidReport.length);
       SmuCommand decoded;
-      bool decodeSuccess = pb_decode(&stream, SmuCommand_fields, &decoded);
+      bool decodeSuccess = pb_decode_ex(&stream, SmuCommand_fields, &decoded, PB_DECODE_DELIMITED);
       if (!decodeSuccess) {
-        debugInfo("Failed to decode")
+        debugInfo("Failed to decode");
       } else {
-
+        debugInfo("Decoded %i", decoded.which_command);
       }
 
-      debugInfo("Received HID: l=%li d=%02x %02x %02x %02x", hidRecv.length, 
-          hidRecv.data[0], hidRecv.data[1], hidRecv.data[2], hidRecv.data[3]);
+      debugInfo("Received HID: l=%li d=%02x %02x %02x %02x", receivedHidReport.length, 
+          receivedHidReport.data[0], receivedHidReport.data[1], receivedHidReport.data[2], receivedHidReport.data[3]);
 
-        send_report.length = 63;
-        send_report.data[0] = 0x42;
-        send_report.data[1] = 0x5A;
-        send_report.data[2] = 0xA5;
-        send_report.data[3] = 0xA5;
-        send_report.data[4] = 0xA5;
-        result = UsbHid.send(&send_report);
-        debugInfo("Sent HID: r=%i ", result);
-
+      SmuResponse response;
+      response.which_response = SmuResponse_measurement_tag;
+      response.response.measurement.voltage = measMv;
+      response.response.measurement.current = measMa;
+      
+      sendHidReport.length = 64;  // must match HID report size
+      memset(sendHidReport.data, 0, sendHidReport.length);  // clear out the excess bytes
+      pb_ostream_t outStream = pb_ostream_from_buffer(sendHidReport.data, 64);
+      pb_encode_ex(&outStream, SmuResponse_fields, &response, PB_ENCODE_DELIMITED);
+      UsbHid.send(&sendHidReport);
     }
 
     widSetV.setValue(targetV);

@@ -4,7 +4,9 @@ import org.hid4java.event.HidServicesEvent
 import org.hid4java.{HidManager, HidServicesListener, HidServicesSpecification}
 
 import scala.jdk.CollectionConverters.CollectionHasAsScala
+import smu.{SmuCommand, SmuResponse}
 
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 
 object Main extends App {
   val kDeviceVid = 0x1209
@@ -24,9 +26,19 @@ object Main extends App {
     println(s"Device found: ${smuDevice}")
     smuDevice.open()
     while (true) {
-      smuDevice.write(Seq(0x12, 0x42, i).map(_.toByte).toArray, 3, 0x96.toByte)
-      println(s"Read <= ${smuDevice.read().mkString(",")}")
-      i = i + 1
+      val readData = smuDevice.read().map(_.toByte)
+      val response = SmuResponse.parseDelimitedFrom(new ByteArrayInputStream(readData))
+      println(readData)
+      println(response)
+
+      val command = SmuCommand(SmuCommand.Command.SetControl(smu.Control(
+        voltage = 1500, currentSource = 100, currentSink = 100,
+        enable = false
+      )))
+      val outputStream = new ByteArrayOutputStream()
+      command.writeDelimitedTo(outputStream)
+      val outputBytes = outputStream.toByteArray
+      smuDevice.write(outputBytes, outputBytes.size, 0)
     }
 
 

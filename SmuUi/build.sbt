@@ -1,3 +1,5 @@
+import scalapb.compiler.Version.{scalapbVersion}
+
 name := "smu-ui"
 
 version := "0.1"
@@ -9,6 +11,8 @@ scalacOptions += "-deprecation"
 libraryDependencies ++= Seq(
   "org.scalafx" %% "scalafx" % "16.0.0-R25",
   "com.github.tototoshi" %% "scala-csv" % "1.3.8",
+
+  "com.thesamet.scalapb" %% "scalapb-runtime" % scalapbVersion % "protobuf",
 
   "org.scalatest" %% "scalatest" % "3.2.0" % "test",
   
@@ -24,6 +28,18 @@ val osName = System.getProperty("os.name") match {
   case _ => throw new Exception("Unknown platform!")
 }
 libraryDependencies ++= javafxModules.map(m => "org.openjfx" % s"javafx-$m" % "16" classifier osName)
+
+// Proto compile
+Compile / PB.protoSources := Seq(
+  baseDirectory.value / "../Smu/proto",
+  // this requires PIO to have run and fetched the nanopb dependency
+  baseDirectory.value / "../.pio/libdeps/smu/Nanopb/generator/proto",
+)
+
+Compile / PB.targets := Seq(
+  scalapb.gen() -> (Compile / sourceManaged).value / "scalapb"
+)
+
 
 assembly / assemblyMergeStrategy := {
   case "module-info.class" => MergeStrategy.first
