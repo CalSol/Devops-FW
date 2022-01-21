@@ -318,24 +318,14 @@ int main() {
       if (currentCapability > 1 && pdCapabilities[currentCapability - 2].voltageMv >= targetV + 1500) {
         UsbPdFsm.requestCapability(currentCapability - 1, pdCapabilities[currentCapability - 2].maxCurrentMa);
       } else if (currentCapability < numCapabilities && 
-          pdCapabilities[currentCapability - 1].voltageMv < targetV + 1500) {
+          (currentCapability == 0 || pdCapabilities[currentCapability - 1].voltageMv < targetV + 1500)) {
         UsbPdFsm.requestCapability(currentCapability + 1, pdCapabilities[currentCapability].maxCurrentMa);
       }
     }
 
-    HID_REPORT sendHidReport;
-    bool result = false;
     switch (SwitchCGesture.update()) {
       case ButtonGesture::Gesture::kClickRelease:
         selected = (selected + 1) % 3;
-
-        sendHidReport.length = 3;
-        sendHidReport.data[0] = 0x42;
-        sendHidReport.data[1] = 0x5A;
-        sendHidReport.data[2] = 0xA5;
-        result = UsbHid.send(&sendHidReport);
-        debugInfo("Sent HID: r=%i ", result);
-
         break;
       case ButtonGesture::Gesture::kHoldTransition:
         if (Smu.getState() == SmuAnalogStage::SmuState::kEnabled) {
@@ -347,7 +337,7 @@ int main() {
       default: break;
     }
 
-    HID_REPORT receivedHidReport;
+    HID_REPORT receivedHidReport, sendHidReport;
     if(UsbHid.configured() && UsbHid.readNB(&receivedHidReport)) {
       pb_istream_t stream = pb_istream_from_buffer(receivedHidReport.data, receivedHidReport.length);
       SmuCommand decoded;
