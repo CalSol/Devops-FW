@@ -362,9 +362,9 @@ int main() {
           receivedHidReport.data[0], receivedHidReport.data[1], receivedHidReport.data[2], receivedHidReport.data[3]);
 
       SmuResponse response;
-      response.which_response = SmuResponse_measurement_tag;
-      response.response.measurement.voltage = measMv;
-      response.response.measurement.current = measMa;
+      response.which_response = SmuResponse_measurements_tag;
+      response.response.measurements.voltage = measMv;
+      response.response.measurements.current = measMa;
       
       sendHidReport.length = 64;  // must match HID report size
       memset(sendHidReport.data, 0, sendHidReport.length);  // clear out the excess bytes

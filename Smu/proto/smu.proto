@@ -1,7 +1,7 @@
 syntax = "proto3";
 import 'nanopb.proto';
 
-message ReadMeasurements {
+message Empty {
 }
 
 message Control {
@@ -11,28 +11,48 @@ message Control {
   bool enable = 4;
 }
 
+message ControlRaw {
+  uint32 voltage = 1;  // setpoint, raw DAC counts
+  uint32 currentSource = 2;  // setpoint, in raw DAC counts
+  uint32 currentSink = 3;  // setpoint, in raw DAC counts
+  bool enable = 4;
+}
+
 // Message sent by the PC to the SMU
 message SmuCommand {
   oneof command {
-    ReadMeasurements readMeasurements = 1;
-    Control setControl = 2;
+    Empty getDeviceInfo = 1;
+    Empty readMeasurements = 10;
+    Empty readMeasurementsRaw = 11;
+    Control setControl = 20;
+    Control setControlRaw = 21;
   }
 }
 
 message DeviceInfo {
   string build = 1 [(nanopb).max_count = 48];
+  uint32 voltageDacCounts = 10;
+  uint32 currentSourceDacCounts = 11;
+  uint32 currentSinkDacCounts = 12;
+  uint32 voltageAdcCounts = 20;
+  uint32 currentAdcCounts = 21;
 }
 
-message Measurement {
+message Measurements {
   int32 voltage = 1;  // in mV
   int32 current = 2;  // in mA
+}
+
+message MeasurementsRaw {
+  uint32 voltage = 1;  // in raw ADC counts
+  uint32 current = 2;  // in raw ADC counts
 }
 
 // Message returned from the SMU to the PC in response to a SmuCommand
 message SmuResponse {
   oneof response {
     DeviceInfo deviceInfo = 1;
-    Measurement measurement = 2;
-    Control control = 3;
+    Measurements measurements = 10;
+    Measurements measurementsRaw = 11;
   }
 }
