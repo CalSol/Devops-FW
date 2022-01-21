@@ -245,15 +245,16 @@ int main() {
   uint8_t selected = 0;
 
   int32_t measMv = 0, measMa = 0;  // needed for the current limiting indicator
+  uint16_t measVoltAdc = 0, measCurrentAdc = 0;
   
   while (1) {
     if (MeasureTicker.checkExpired()) {  // limit the ADC read frequency to avoid impedance issues
       SharedSpi.frequency(100000);
     
-      measMv = Smu.readVoltageMv();
+      measMv = Smu.readVoltageMv(&measVoltAdc);
       widMeasV.setValue(measMv);
 
-      measMa = Smu.readCurrentMa();
+      measMa = Smu.readCurrentMa(&measCurrentAdc);
       widMeasI.setValue(measMa);  
     }
 
@@ -311,18 +312,6 @@ int main() {
       default: break;
     }
 
-    if (voltageChanged) {
-      UsbPd::Capability::Unpacked pdCapabilities[8];
-      uint8_t numCapabilities = UsbPdFsm.getCapabilities(pdCapabilities);
-      uint8_t currentCapability = UsbPdFsm.currentCapability();  // note, 1-indexed!
-      if (currentCapability > 1 && pdCapabilities[currentCapability - 2].voltageMv >= targetV + 1500) {
-        UsbPdFsm.requestCapability(currentCapability - 1, pdCapabilities[currentCapability - 2].maxCurrentMa);
-      } else if (currentCapability < numCapabilities && 
-          (currentCapability == 0 || pdCapabilities[currentCapability - 1].voltageMv < targetV + 1500)) {
-        UsbPdFsm.requestCapability(currentCapability + 1, pdCapabilities[currentCapability].maxCurrentMa);
-      }
-    }
-
     switch (SwitchCGesture.update()) {
       case ButtonGesture::Gesture::kClickRelease:
         selected = (selected + 1) % 3;
@@ -337,7 +326,7 @@ int main() {
       default: break;
     }
 
-    HID_REPORT receivedHidReport, sendHidReport;
+    HID_REPORT receivedHidReport;
     if(UsbHid.configured() && UsbHid.readNB(&receivedHidReport)) {
       pb_istream_t stream = pb_istream_from_buffer(receivedHidReport.data, receivedHidReport.length);
       SmuCommand decoded;
@@ -346,21 +335,67 @@ int main() {
         debugInfo("Failed to decode");
       } else {
         debugInfo("Decoded %i", decoded.which_command);
+        SmuResponse response = SmuResponse_init_zero;
+        
+        if (decoded.which_command == SmuCommand_getDeviceInfo_tag) {
+
+        } else if (decoded.which_command == SmuCommand_readMeasurements_tag) {
+          response.which_response = SmuResponse_measurements_tag;
+          response.response.measurements.voltage = measMv;
+          response.response.measurements.current = measMa;
+        } else if (decoded.which_command == SmuCommand_readMeasurementsRaw_tag) {
+          response.which_response = SmuResponse_measurementsRaw_tag;
+          response.response.measurementsRaw.voltage = measVoltAdc;
+          response.response.measurementsRaw.current = measCurrentAdc;
+        } else if (decoded.which_command == SmuCommand_setControl_tag) {
+          voltageChanged = true;
+          targetV = decoded.command.setControl.voltage;
+          Smu.setVoltageMv(targetV);
+          targetISrc = decoded.command.setControl.currentSource;
+          Smu.setCurrentSourceMa(targetISrc);
+          targetISnk = decoded.command.setControl.currentSink;
+          Smu.setCurrentSinkMa(targetISnk);
+          if (decoded.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kEnabled) {
+            Smu.enableDriver();
+          } else if (!decoded.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kDisabled) {
+            Smu.disableDriver();
+          }
+        } else if (decoded.which_command == SmuCommand_setControlRaw_tag) {
+          voltageChanged = true;
+          targetV = Smu.dacToVoltage(decoded.command.setControl.voltage);
+          Smu.setVoltageDac(decoded.command.setControlRaw.voltage);
+          targetISrc = Smu.dacToCurrent(decoded.command.setControlRaw.currentSource);
+          Smu.setCurrentSourceDac(decoded.command.setControlRaw.currentSource);
+          targetISnk = Smu.dacToCurrent(decoded.command.setControlRaw.currentSink);
+          Smu.setCurrentSinkDac(decoded.command.setControlRaw.currentSink);
+          if (decoded.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kEnabled) {
+            Smu.enableDriver();
+          } else if (!decoded.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kDisabled) {
+            Smu.disableDriver();
+          }
+        }
+
+        if (response.which_response != 0) {
+          HID_REPORT sendHidReport;
+          sendHidReport.length = 64;  // must match HID report size
+          memset(sendHidReport.data, 0, sendHidReport.length);  // clear out the excess bytes
+          pb_ostream_t outStream = pb_ostream_from_buffer(sendHidReport.data, 64);
+          pb_encode_ex(&outStream, SmuResponse_fields, &response, PB_ENCODE_DELIMITED);
+          UsbHid.send(&sendHidReport);
+        }
       }
+    }
 
-      debugInfo("Received HID: l=%li d=%02x %02x %02x %02x", receivedHidReport.length, 
-          receivedHidReport.data[0], receivedHidReport.data[1], receivedHidReport.data[2], receivedHidReport.data[3]);
-
-      SmuResponse response;
-      response.which_response = SmuResponse_measurements_tag;
-      response.response.measurements.voltage = measMv;
-      response.response.measurements.current = measMa;
-      
-      sendHidReport.length = 64;  // must match HID report size
-      memset(sendHidReport.data, 0, sendHidReport.length);  // clear out the excess bytes
-      pb_ostream_t outStream = pb_ostream_from_buffer(sendHidReport.data, 64);
-      pb_encode_ex(&outStream, SmuResponse_fields, &response, PB_ENCODE_DELIMITED);
-      UsbHid.send(&sendHidReport);
+    if (voltageChanged) {
+      UsbPd::Capability::Unpacked pdCapabilities[8];
+      uint8_t numCapabilities = UsbPdFsm.getCapabilities(pdCapabilities);
+      uint8_t currentCapability = UsbPdFsm.currentCapability();  // note, 1-indexed!
+      if (currentCapability > 1 && pdCapabilities[currentCapability - 2].voltageMv >= targetV + 1500) {
+        UsbPdFsm.requestCapability(currentCapability - 1, pdCapabilities[currentCapability - 2].maxCurrentMa);
+      } else if (currentCapability < numCapabilities && 
+          (currentCapability == 0 || pdCapabilities[currentCapability - 1].voltageMv < targetV + 1500)) {
+        UsbPdFsm.requestCapability(currentCapability + 1, pdCapabilities[currentCapability].maxCurrentMa);
+      }
     }
 
     widSetV.setValue(targetV);
