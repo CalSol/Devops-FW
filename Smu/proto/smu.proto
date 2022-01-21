@@ -25,7 +25,7 @@ message SmuCommand {
     Empty readMeasurements = 10;
     Empty readMeasurementsRaw = 11;
     Control setControl = 20;
-    Control setControlRaw = 21;
+    ControlRaw setControlRaw = 21;
   }
 }
 
@@ -53,6 +53,6 @@ message SmuResponse {
   oneof response {
     DeviceInfo deviceInfo = 1;
     Measurements measurements = 10;
-    Measurements measurementsRaw = 11;
+    MeasurementsRaw measurementsRaw = 11;
   }
 }
