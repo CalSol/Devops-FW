@@ -1,0 +1,38 @@
+syntax = "proto3";
+import 'nanopb.proto';
+
+message ReadMeasurements {
+}
+
+message Control {
+  int32 voltage = 1;  // setpoint, in mV
+  int32 currentSource = 2;  // setpoint, in mA
+  int32 currentSink = 3;  // setpoint, in mA
+  bool enable = 4;
+}
+
+// Message sent by the PC to the SMU
+message SmuCommand {
+  oneof command {
+    ReadMeasurements readMeasurements = 1;
+    Control setControl = 2;
+  }
+}
+
+message DeviceInfo {
+  string build = 1 [(nanopb).max_count = 48];
+}
+
+message Measurement {
+  int32 voltage = 1;  // in mV
+  int32 current = 2;  // in mA
+}
+
+// Message returned from the SMU to the PC in response to a SmuCommand
+message SmuResponse {
+  oneof response {
+    DeviceInfo deviceInfo = 1;
+    Measurement measurement = 2;
+    Control control = 3;
+  }
+}

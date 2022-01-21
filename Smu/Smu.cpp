@@ -25,6 +25,11 @@
 #include "DefaultFonts.h"
 #include "Widget.h"
 
+#include "pb_common.h"
+#include "pb_encode.h"
+#include "pb_decode.h"
+#include "smu.pb.h"
+
 /*
  * Local peripheral definitions
  */
@@ -342,12 +347,22 @@ int main() {
       default: break;
     }
 
-    HID_REPORT hidRecv;
-    if(UsbHid.configured() && UsbHid.readNB(&hidRecv)) {
+    HID_REPORT receivedHidReport;
+    if(UsbHid.configured() && UsbHid.readNB(&receivedHidReport)) {
+      size_t length = receivedHidReport.data[0];
+      pb_istream_t stream = pb_istream_from_buffer(receivedHidReport.data[1], length);
+      SmuCommand decoded;
+      bool decodeSuccess = pb_decode(&stream, SmuCommand_fields, &decoded);
+      if (!decodeSuccess) {
+        debugInfo("Failed to decode")
+      } else {
+
+      }
+
       debugInfo("Received HID: l=%li d=%02x %02x %02x %02x", hidRecv.length, 
           hidRecv.data[0], hidRecv.data[1], hidRecv.data[2], hidRecv.data[3]);
 
-        send_report.length = 64;
+        send_report.length = 63;
         send_report.data[0] = 0x42;
         send_report.data[1] = 0x5A;
         send_report.data[2] = 0xA5;
