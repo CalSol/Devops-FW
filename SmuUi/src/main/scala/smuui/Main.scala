@@ -6,6 +6,7 @@ import org.hid4java.{HidDevice, HidManager, HidServicesListener, HidServicesSpec
 
 import scala.jdk.CollectionConverters.CollectionHasAsScala
 import smu.{SmuCommand, SmuResponse}
+import device.SmuDevice
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, File}
 import scala.io.StdIn.readLine
@@ -20,13 +21,31 @@ class SmuInterface(device: HidDevice) {
     device.close()
   }
 
+  // Sends a command and returns the response. Automatically retries in the event no response is received.
+  def command(command: SmuCommand): SmuResponse = {
+    var response: Option[SmuResponse] = None
+    while (response.isEmpty) {
+      write(command)
+      response = read()
+    }
+    response.get
+  }
+
+  def getDeviceInfo(): smu.DeviceInfo = {
+    command(SmuCommand(SmuCommand.Command.GetDeviceInfo(smu.Empty()))).getDeviceInfo
+  }
+
+  def getNvram(): SmuDevice = {
+    command(SmuCommand(SmuCommand.Command.GetDeviceInfo(smu.Empty()))).getReadNvram
+  }
+
   // Reads a HID packet and decodes the proto
-  def read(): Option[SmuResponse] = {
+  protected def read(): Option[SmuResponse] = {
     val readData = device.read().map(_.toByte)
     SmuResponse.parseDelimitedFrom(new ByteArrayInputStream(readData))
   }
 
-  def write(command: SmuCommand): Unit = {
+  protected def write(command: SmuCommand): Unit = {
     val outputStream = new ByteArrayOutputStream()
     command.writeDelimitedTo(outputStream)
     val outputBytes = outputStream.toByteArray
@@ -54,7 +73,10 @@ object Main extends App {
   }
 
   val smuDevice = new SmuInterface(smuDevices.head)
-  println(s"Device opened: ${smuDevice}")
+  println(s"Device opened: $smuDevice")
+
+  println(s"Device info: ${smuDevice.getDeviceInfo().toProtoString}")
+  println(s"Device NV: ${smuDevice.getNvram().toProtoString}")
 
   val calCsv = CSVWriter.open(new File("cal.csv"))
   calCsv.writeRow(Seq("voltageDac", "voltageAdc", "actualVolts"))
@@ -84,24 +106,19 @@ object Main extends App {
   //      .filter(_ == 1988)
 
   println(s"${calDacSequence.size} calibration points: ${calDacSequence.mkString(", ")}")
+  readLine()
 
   for (dacValue <- calDacSequence) {
     var actualVolts: String = ""
     var measurement: smu.MeasurementsRaw = null
     while (actualVolts.isEmpty) {  // allow user to re-send the command
-      smuDevice.write(SmuCommand(SmuCommand.Command.SetControlRaw(smu.ControlRaw(
+      smuDevice.command(SmuCommand(SmuCommand.Command.SetControlRaw(smu.ControlRaw(
         voltage = dacValue, currentSource = 2042 - 34, currentSink = 2042 + 34,
         enable = true
       ))))
       Thread.sleep(250)
-      smuDevice.write(SmuCommand(SmuCommand.Command.ReadMeasurementsRaw(smu.Empty())))
-
-      var response: Option[SmuResponse] = None
-      while (response.isEmpty || !response.get.response.isMeasurementsRaw) {
-        response = smuDevice.read()
-        println(s"Received $response")
-      }
-      measurement = response.get.response.measurementsRaw.get
+      val response = smuDevice.command(SmuCommand(SmuCommand.Command.ReadMeasurementsRaw(smu.Empty())))
+      measurement = response.response.measurementsRaw.get
 
       println(s"DAC=$dacValue, meas=${measurement.voltage}, enter actual voltage:")
 

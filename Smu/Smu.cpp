@@ -6,6 +6,7 @@
 #define DEBUG_ENABLED
 #include "debug.h"
 
+#include "EEPROM.h"
 #include "WDT.h"
 
 #include "RgbActivityLed.h"
@@ -28,6 +29,7 @@
 #include "pb_common.h"
 #include "pb_encode.h"
 #include "pb_decode.h"
+#include "device.pb.h"
 #include "smu.pb.h"
 
 /*
@@ -53,30 +55,30 @@ public:
   }
 
   // USB Device oerrides
-const uint8_t * stringImanufacturerDesc() {
+  const uint8_t * stringImanufacturerDesc() {
     static const uint8_t stringImanufacturerDescriptor[] = {
-        2 + 5*2,  // bLength
-        STRING_DESCRIPTOR,
-        'D',0,'u',0,'c',0,'k',0,'y',0
+      2 + 5*2,  // bLength
+      STRING_DESCRIPTOR,
+      'D',0,'u',0,'c',0,'k',0,'y',0
     };
     return stringImanufacturerDescriptor;
-}
+  }
 
-const uint8_t * stringIserialDesc() {
+  const uint8_t * stringIserialDesc() {
     static const uint8_t stringIserialDescriptor[] = {
-        2 + 2*2,  // bLength
-        STRING_DESCRIPTOR,
-        '0',0,'1',0
+      2 + 2*2,  // bLength
+      STRING_DESCRIPTOR,
+      '0',0,'1',0
     };
     return stringIserialDescriptor;
-}
+  }
 
-// USB HID overrides
-const uint8_t * stringIproductDesc() {
+  // USB HID overrides
+  const uint8_t * stringIproductDesc() {
     static const uint8_t stringIproductDescriptor[] = {
-        2 + 10*2,  // bLength
-        STRING_DESCRIPTOR,
-        'U',0,'S',0,'B',0,' ',0,'P',0,'D',0,' ',0,'S',0,'M',0,'U',0 //bString iProduct - HID device
+      2 + 10*2,  // bLength
+      STRING_DESCRIPTOR,
+      'U',0,'S',0,'B',0,' ',0,'P',0,'D',0,' ',0,'S',0,'M',0,'U',0 //bString iProduct - HID device
     };
     return stringIproductDescriptor;
 }
@@ -130,6 +132,11 @@ DigitalIn SwitchR(P0_25, PinMode::PullUp);
 ButtonGesture SwitchRGesture(SwitchR);
 DigitalIn SwitchC(P0_26, PinMode::PullUp);
 ButtonGesture SwitchCGesture(SwitchC);
+
+//
+// NVRAM
+//
+size_t kEepromAddr = 0x03200000;  // beginning of 4k EEPROM address space
 
 //
 // LCD and widgets
@@ -229,6 +236,15 @@ int main() {
   debugInfo("Built " __DATE__ " " __TIME__ " " COMPILERNAME);
   if (Wdt.causedReset()) {
     debugWarn("WDT Reset");
+  }
+
+  uint8_t nvBuffer[SmuDevice_size + 1];
+  EEPROM::read(kEepromAddr, nvBuffer, sizeof(nvBuffer));
+  pb_istream_t stream = pb_istream_from_buffer(nvBuffer, sizeof(nvBuffer));
+  SmuDevice nvDecoded;
+  bool nvDecodeSuccess = pb_decode_ex(&stream, SmuDevice_fields, &nvDecoded, PB_DECODE_DELIMITED);
+  if (!nvDecodeSuccess) {
+    debugWarn("NV read failed");
   }
 
   UsTimer.start();
@@ -334,13 +350,24 @@ int main() {
       SmuCommand decoded;
       bool decodeSuccess = pb_decode_ex(&stream, SmuCommand_fields, &decoded, PB_DECODE_DELIMITED);
       if (!decodeSuccess) {
-        debugInfo("Failed to decode");
+        debugWarn("HID report decode failed");
       } else {
-        debugInfo("Decoded %i", decoded.which_command);
         SmuResponse response = SmuResponse_init_zero;
-        
-        if (decoded.which_command == SmuCommand_getDeviceInfo_tag) {
+        response.which_response = SmuResponse_acknowledge_tag;
 
+        if (decoded.which_command == SmuCommand_getDeviceInfo_tag) {
+          response.which_response = SmuResponse_deviceInfo_tag;
+          const char* build = __DATE__ " " __TIME__;
+          if (strlen(build) < sizeof(response.response.deviceInfo.build)) {
+            strcpy(response.response.deviceInfo.build, build);
+          } else {
+            strcpy(response.response.deviceInfo.build, "OVERFLOW");
+          }
+          response.response.deviceInfo.voltageAdcBits = 12;
+          response.response.deviceInfo.currentAdcBits = 12;
+          response.response.deviceInfo.voltageDacBits = 12;
+          response.response.deviceInfo.currentSourceDacBits = 12;
+          response.response.deviceInfo.currentSinkDacBits = 12;
         } else if (decoded.which_command == SmuCommand_readMeasurements_tag) {
           response.which_response = SmuResponse_measurements_tag;
           response.response.measurements.voltage = measMv;
@@ -375,16 +402,28 @@ int main() {
           } else if (!decoded.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kDisabled) {
             Smu.disableDriver();
           }
+        } else if (decoded.which_command == SmuCommand_readNvram_tag) {
+          uint8_t nvBuffer[SmuDevice_size + 1];
+          EEPROM::read(kEepromAddr, nvBuffer, sizeof(nvBuffer));
+          pb_istream_t stream = pb_istream_from_buffer(nvBuffer, sizeof(nvBuffer));
+          SmuDevice nvDecoded;
+          pb_decode_ex(&stream, SmuDevice_fields, &nvDecoded, PB_DECODE_DELIMITED);
+
+          response.which_response = SmuResponse_readNvram_tag;
+          response.response.readNvram = nvDecoded;
+        } else if (decoded.which_command == SmuCommand_updateNvram_tag) {
+          uint8_t nvBuffer[SmuDevice_size + 1];
+          pb_ostream_t outStream = pb_ostream_from_buffer(nvBuffer, sizeof(nvBuffer));
+          pb_encode_ex(&outStream, SmuDevice_fields, &(decoded.command.updateNvram), PB_ENCODE_DELIMITED);
+          EEPROM::write(kEepromAddr, nvBuffer, nvBuffer[0] + 1);
         }
 
-        if (response.which_response != 0) {
-          HID_REPORT sendHidReport;
-          sendHidReport.length = 64;  // must match HID report size
-          memset(sendHidReport.data, 0, sendHidReport.length);  // clear out the excess bytes
-          pb_ostream_t outStream = pb_ostream_from_buffer(sendHidReport.data, 64);
-          pb_encode_ex(&outStream, SmuResponse_fields, &response, PB_ENCODE_DELIMITED);
-          UsbHid.send(&sendHidReport);
-        }
+        HID_REPORT sendHidReport;
+        sendHidReport.length = 64;  // must match HID report size
+        memset(sendHidReport.data, 0, sendHidReport.length);  // clear out the excess bytes
+        pb_ostream_t outStream = pb_ostream_from_buffer(sendHidReport.data, 64);
+        pb_encode_ex(&outStream, SmuResponse_fields, &response, PB_ENCODE_DELIMITED);
+        UsbHid.send(&sendHidReport);
       }
     }
 
@@ -438,7 +477,7 @@ int main() {
       }
       if (LedStatusTicker.checkExpired()) {
         StatusLed.pulse(RgbActivity::kOff);
-      }  
+      }
     } else {
       EnableHigh = 0;
       EnableLow = 0;

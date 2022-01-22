@@ -1,5 +1,9 @@
+// SMU communication (PC to device) prrotocol
+
 syntax = "proto3";
 import 'nanopb.proto';
+import 'device.proto';
+
 
 message Empty {
 }
@@ -19,23 +23,28 @@ message ControlRaw {
 }
 
 // Message sent by the PC to the SMU
+// These should all be idempotent
 message SmuCommand {
   oneof command {
-    Empty getDeviceInfo = 1;
-    Empty readMeasurements = 10;
-    Empty readMeasurementsRaw = 11;
-    Control setControl = 20;
-    ControlRaw setControlRaw = 21;
+    Empty getDeviceInfo = 10;
+    Empty readMeasurements = 20;
+    Empty readMeasurementsRaw = 21;
+    Control setControl = 23;  // acknowledge response only
+    ControlRaw setControlRaw = 31;  // acknowledge response only
+
+    Empty readNvram = 41;
+    SmuDevice updateNvram = 42;  // acknowledge response only
   }
 }
 
+
 message DeviceInfo {
-  string build = 1 [(nanopb).max_count = 48];
-  uint32 voltageDacCounts = 10;
-  uint32 currentSourceDacCounts = 11;
-  uint32 currentSinkDacCounts = 12;
-  uint32 voltageAdcCounts = 20;
-  uint32 currentAdcCounts = 21;
+  string build = 1 [(nanopb).max_size = 32];
+  uint32 voltageAdcBits = 10;
+  uint32 currentAdcBits = 11;
+  uint32 voltageDacBits = 20;
+  uint32 currentSourceDacBits = 21;
+  uint32 currentSinkDacBits = 22;
 }
 
 message Measurements {
@@ -51,8 +60,12 @@ message MeasurementsRaw {
 // Message returned from the SMU to the PC in response to a SmuCommand
 message SmuResponse {
   oneof response {
-    DeviceInfo deviceInfo = 1;
-    Measurements measurements = 10;
-    MeasurementsRaw measurementsRaw = 11;
+    Empty acknowledge = 1;
+
+    DeviceInfo deviceInfo = 10;
+    Measurements measurements = 20;
+    MeasurementsRaw measurementsRaw = 21;
+
+    SmuDevice readNvram = 41;
   }
 }

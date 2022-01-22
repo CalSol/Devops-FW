@@ -1,0 +1,21 @@
+// Device NVRAM / calibration format
+
+syntax = "proto3";
+import 'nanopb.proto';
+
+
+message Calibration {
+  float slope = 1;
+  float intercept = 2;
+}
+
+// Top-level message
+message SmuDevice {
+  string serial = 1 [(nanopb).max_size = 8];
+
+  Calibration voltageAdcCalibration = 10;
+  Calibration voltageDacCalibration = 11;
+  Calibration currentAdcCalibration = 12;
+  Calibration currentSourceDacCalibration = 13;
+  Calibration currentSinkDacCalibration = 14;
+}
