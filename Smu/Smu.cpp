@@ -157,6 +157,7 @@ TextWidget widBuildData("  " __DATE__, 0, Font5x7, kContrastBackground);
 Widget* widVersionContents[] = {&widVersionData, &widBuildData};
 HGridWidget<2> widVersionGrid(widVersionContents);
 
+TextWidget widSerial("", 0, Font5x7, kContrastBackground);
 
 TextWidget widEnable("     ", 0, Font5x7, kContrastStale);
 LabelFrameWidget widEnableFrame(&widEnable, "ENABLE", Font3x5, kContrastBackground);
@@ -226,8 +227,8 @@ Widget* widPdContents[] = {
 HGridWidget<9> widPdGrid(widPdContents);
 LabelFrameWidget pdStatusFrame(&widPdGrid, "USB PD", Font3x5, kContrastBackground);
 
-Widget* widMainContents[] = {&widVersionGrid, &widMeas, &widSet, &pdStatusFrame};
-VGridWidget<4> widMain(widMainContents);
+Widget* widMainContents[] = {&widVersionGrid, &widSerial, &widMeas, &widSet, &pdStatusFrame};
+VGridWidget<5> widMain(widMainContents);
 
 
 int main() {
@@ -249,7 +250,7 @@ int main() {
   if (!nvDecodeSuccess) {
     debugWarn("NV read failed");
   } else {
-    debugInfo("NV serial: %s", nvDecoded.serial);
+    widSerial.setValue(nvDecoded.serial);
   }
 
   UsTimer.start();
