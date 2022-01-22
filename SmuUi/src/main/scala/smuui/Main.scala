@@ -36,7 +36,11 @@ class SmuInterface(device: HidDevice) {
   }
 
   def getNvram(): SmuDevice = {
-    command(SmuCommand(SmuCommand.Command.GetDeviceInfo(smu.Empty()))).getReadNvram
+    command(SmuCommand(SmuCommand.Command.ReadNvram(smu.Empty()))).getReadNvram
+  }
+
+  def updateNvram(nvram: SmuDevice): SmuResponse = {
+    command(SmuCommand(SmuCommand.Command.UpdateNvram(value=nvram)))
   }
 
   // Reads a HID packet and decodes the proto
@@ -78,18 +82,25 @@ object Main extends App {
   println(s"Device info: ${smuDevice.getDeviceInfo().toProtoString}")
   println(s"Device NV: ${smuDevice.getNvram().toProtoString}")
 
+//  val updateResponse = smuDevice.updateNvram(SmuDevice(serial="1-02"))
+  println(s"Device NV: ${smuDevice.getNvram().toProtoString}")
+
   val calCsv = CSVWriter.open(new File("cal.csv"))
   calCsv.writeRow(Seq("voltageDac", "voltageAdc", "actualVolts"))
 
   val kMaxVoltage = 20
   val kMinVoltage = 0
 
+  val kDacCounts = 4095
+  val kDacCenter = 2048
+  val kVref = 3.0
   def voltageToDac(voltage: Double): Double = {
-    val kDacCounts = 4095
-    val kDacCenter = 2048
-    val kVoltRatio = 22.148
-    val kVref = 3.0
-    kDacCenter - (voltage * kDacCounts / kVoltRatio / kVref)
+    val kVoltageRatio = 22.148
+    kDacCenter - (voltage * kDacCounts / kVoltageRatio / kVref)
+  }
+  def currentToDac(current: Double): Double = {
+    val kCurrentRatio = 10.000
+    kDacCenter - (current * kDacCounts / kCurrentRatio / kVref)
   }
   def getVoltagesSeq(lowVoltage: Double, highVoltage: Double, by: Int): Seq[Int] = {
     val lowDac = ((voltageToDac(highVoltage) / by).floor * by).toInt

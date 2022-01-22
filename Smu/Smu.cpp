@@ -245,6 +245,8 @@ int main() {
   bool nvDecodeSuccess = pb_decode_ex(&stream, SmuDevice_fields, &nvDecoded, PB_DECODE_DELIMITED);
   if (!nvDecodeSuccess) {
     debugWarn("NV read failed");
+  } else {
+    debugInfo("NV serial: %s", nvDecoded.serial);
   }
 
   UsTimer.start();
@@ -403,19 +405,41 @@ int main() {
             Smu.disableDriver();
           }
         } else if (decoded.which_command == SmuCommand_readNvram_tag) {
-          uint8_t nvBuffer[SmuDevice_size + 1];
-          EEPROM::read(kEepromAddr, nvBuffer, sizeof(nvBuffer));
-          pb_istream_t stream = pb_istream_from_buffer(nvBuffer, sizeof(nvBuffer));
-          SmuDevice nvDecoded;
-          pb_decode_ex(&stream, SmuDevice_fields, &nvDecoded, PB_DECODE_DELIMITED);
-
           response.which_response = SmuResponse_readNvram_tag;
+          memcpy(&response.response.readNvram, &nvDecoded, sizeof(nvDecoded));
           response.response.readNvram = nvDecoded;
         } else if (decoded.which_command == SmuCommand_updateNvram_tag) {
-          uint8_t nvBuffer[SmuDevice_size + 1];
+          // merge from existing config
+          if (strlen(decoded.command.updateNvram.serial) == 0) {
+            strcpy(decoded.command.updateNvram.serial, nvDecoded.serial);
+          }
+          if (!decoded.command.updateNvram.has_voltageAdcCalibration) {
+            decoded.command.updateNvram.has_voltageAdcCalibration = nvDecoded.has_voltageAdcCalibration;
+            decoded.command.updateNvram.voltageAdcCalibration = nvDecoded.voltageAdcCalibration;
+          }
+          if (!decoded.command.updateNvram.has_currentAdcCalibration) {
+            decoded.command.updateNvram.has_currentAdcCalibration = nvDecoded.has_currentAdcCalibration;
+            decoded.command.updateNvram.currentAdcCalibration = nvDecoded.currentAdcCalibration;
+          }
+          if (!decoded.command.updateNvram.has_voltageDacCalibration) {
+            decoded.command.updateNvram.has_voltageDacCalibration = nvDecoded.has_voltageDacCalibration;
+            decoded.command.updateNvram.voltageDacCalibration = nvDecoded.voltageDacCalibration;
+          }
+          if (!decoded.command.updateNvram.has_currentSourceDacCalibration) {
+            decoded.command.updateNvram.has_currentSourceDacCalibration = nvDecoded.has_currentSourceDacCalibration;
+            decoded.command.updateNvram.currentSourceDacCalibration = nvDecoded.currentSourceDacCalibration;
+          }
+          if (!decoded.command.updateNvram.has_currentSinkDacCalibration) {
+            decoded.command.updateNvram.has_currentSinkDacCalibration = nvDecoded.has_currentSinkDacCalibration;
+            decoded.command.updateNvram.currentSinkDacCalibration = nvDecoded.currentSinkDacCalibration;
+          }
+          nvDecoded = decoded.command.updateNvram;
+          
           pb_ostream_t outStream = pb_ostream_from_buffer(nvBuffer, sizeof(nvBuffer));
-          pb_encode_ex(&outStream, SmuDevice_fields, &(decoded.command.updateNvram), PB_ENCODE_DELIMITED);
+          pb_encode_ex(&outStream, SmuDevice_fields, &(nvDecoded), PB_ENCODE_DELIMITED);
           EEPROM::write(kEepromAddr, nvBuffer, nvBuffer[0] + 1);
+          
+          debugInfo("HID:UpdateNvram: write %i bytes", nvBuffer[0] + 1);
         }
 
         HID_REPORT sendHidReport;
