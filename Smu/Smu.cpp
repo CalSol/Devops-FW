@@ -136,7 +136,9 @@ ButtonGesture SwitchCGesture(SwitchC);
 //
 // NVRAM
 //
-size_t kEepromAddr = 0x03200000;  // beginning of 4k EEPROM address space
+size_t kEepromAddr = 0;
+uint8_t nvBuffer[SmuDevice_size + 1];
+SmuDevice nvDecoded = SmuDevice_init_default;
 
 //
 // LCD and widgets
@@ -238,10 +240,11 @@ int main() {
     debugWarn("WDT Reset");
   }
 
-  uint8_t nvBuffer[SmuDevice_size + 1];
+  EEPROM::init();
   EEPROM::read(kEepromAddr, nvBuffer, sizeof(nvBuffer));
+  debugInfo("NV size: %i", nvBuffer[0] + 1);
+  
   pb_istream_t stream = pb_istream_from_buffer(nvBuffer, sizeof(nvBuffer));
-  SmuDevice nvDecoded;
   bool nvDecodeSuccess = pb_decode_ex(&stream, SmuDevice_fields, &nvDecoded, PB_DECODE_DELIMITED);
   if (!nvDecodeSuccess) {
     debugWarn("NV read failed");

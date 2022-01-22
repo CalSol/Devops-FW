@@ -80,10 +80,15 @@ object Main extends App {
   println(s"Device opened: $smuDevice")
 
   println(s"Device info: ${smuDevice.getDeviceInfo().toProtoString}")
-  println(s"Device NV: ${smuDevice.getNvram().toProtoString}")
+  println(s"Read NV: ${smuDevice.getNvram().toProtoString}")
 
-//  val updateResponse = smuDevice.updateNvram(SmuDevice(serial="1-02"))
-  println(s"Device NV: ${smuDevice.getNvram().toProtoString}")
+  val updateNvramData = SmuDevice(
+    serial = "1-02",
+    voltageAdcCalibration = Some(device.Calibration(slope = 62.05950631f, intercept = 2034.809922f)),
+    voltageDacCalibration = Some(device.Calibration(slope = -62.35722278f, intercept = 2041.427676f)),
+  )
+  println(s"Update NV: ${smuDevice.updateNvram(updateNvramData)} (${updateNvramData.serializedSize} B)")
+  println(s"Read NV: ${smuDevice.getNvram().toProtoString}")
 
   val calCsv = CSVWriter.open(new File("cal.csv"))
   calCsv.writeRow(Seq("voltageDac", "voltageAdc", "actualVolts"))
