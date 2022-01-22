@@ -162,7 +162,7 @@ Widget* widMeasContents[] = {&widEnableFrame, &widMeasVFrame, &widMeasIFrame};
 HGridWidget<3> widMeas(widMeasContents);
 
 
-TextWidget widUsb("     ", 0, Font5x7, kContrastStale);
+StaleTextWidget widUsb("     ", 5, 150*1000, Font5x7, kContrastActive, kContrastStale);
 LabelFrameWidget widUsbFrame(&widUsb, "USB", Font3x5, kContrastBackground);
 
 StaleNumericTextWidget widSetV(0, 2, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 2);
@@ -328,6 +328,8 @@ int main() {
 
     HID_REPORT receivedHidReport;
     if(UsbHid.configured() && UsbHid.readNB(&receivedHidReport)) {
+      widUsb.fresh();
+
       pb_istream_t stream = pb_istream_from_buffer(receivedHidReport.data, receivedHidReport.length);
       SmuCommand decoded;
       bool decodeSuccess = pb_decode_ex(&stream, SmuCommand_fields, &decoded, PB_DECODE_DELIMITED);
@@ -450,11 +452,9 @@ int main() {
     }
 
     if (UsbHid.configured()) {
-      widUsb.setValue(" HID ");
-      widUsb.setContrast(kContrastActive);
+      widUsb.setValueStale(" HID ");
     } else {
-      widUsb.setValue(" DIS ");
-      widUsb.setContrast(kContrastStale);
+      widUsb.setValueStale(" DIS ");
       UsbHid.connect(false);
     }
 

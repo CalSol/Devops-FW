@@ -59,39 +59,34 @@ object Main extends App {
   val calCsv = CSVWriter.open(new File("cal.csv"))
   calCsv.writeRow(Seq("voltageDac", "voltageAdc", "actualVolts"))
 
+  val kMaxVoltage = 20
+  val kMinVoltage = 0
+
+  def voltageToDac(voltage: Double): Double = {
+    val kDacCounts = 4095
+    val kDacCenter = 2048
+    val kVoltRatio = 22.148
+    val kVref = 3.0
+    kDacCenter - (voltage * kDacCounts / kVoltRatio / kVref)
+  }
+  def getVoltagesSeq(lowVoltage: Double, highVoltage: Double, by: Int): Seq[Int] = {
+    val lowDac = ((voltageToDac(highVoltage) / by).floor * by).toInt
+    val highDac = ((voltageToDac(lowVoltage) / by).ceil * by).toInt
+    (lowDac to highDac by by)
+  }
+
   val calDacSequence = Seq(
-    1536,
-    1600,
-    1664,
-    1728,
-    1792,
-    1856,
-    1920,
-    1952,
-    1984,
-    2000,
-    2016,
-    2024,
+    getVoltagesSeq(0, 20, 64),
+    getVoltagesSeq(0.25, 5, 16),
+    getVoltagesSeq(0.25, 1, 4),
+  ).flatten.distinct
+      .sorted.reverse
+  //      .filter(_ == 1988)
 
-    // below are off-scale low
-//    2032,
-
-//    2040,
-//    2044,
-//
-//    2046,
-//    2047,
-//    2048,
-//    2049,
-//    2050,
-//
-//    2052,
-//    2056,
-//    2064,
-  )
+  println(s"${calDacSequence.size} calibration points: ${calDacSequence.mkString(", ")}")
 
   for (dacValue <- calDacSequence) {
-    var actualVolts: Option[Float] = None
+    var actualVolts: String = ""
     var measurement: smu.MeasurementsRaw = null
     while (actualVolts.isEmpty) {  // allow user to re-send the command
       smuDevice.write(SmuCommand(SmuCommand.Command.SetControlRaw(smu.ControlRaw(
@@ -104,15 +99,17 @@ object Main extends App {
       var response: Option[SmuResponse] = None
       while (response.isEmpty || !response.get.response.isMeasurementsRaw) {
         response = smuDevice.read()
+        println(s"Received $response")
       }
       measurement = response.get.response.measurementsRaw.get
 
       println(s"DAC=$dacValue, meas=${measurement.voltage}, enter actual voltage:")
 
-      actualVolts = readLine().toFloatOption
+      actualVolts = readLine()
+      calCsv.flush()
     }
 
-    calCsv.writeRow(Seq(dacValue.toString, measurement.voltage.toString, actualVolts.get.toString))
+    calCsv.writeRow(Seq(actualVolts, dacValue.toString, measurement.voltage.toString))
   }
 
   calCsv.close()
