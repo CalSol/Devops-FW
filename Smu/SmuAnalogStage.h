@@ -25,7 +25,7 @@ public:
     if (rawAdcOut != NULL) {
       *rawAdcOut = adcValue;
     }
-    return (adcValue - voltageAdcIntercept_) * kCalibrationDenominator / voltageAdcSlope_;
+    return (adcValue - voltageAdcIntercept_) * kCalibrationDenominator * 1000 / voltageAdcSlope_;
   }
 
   // Reads the current ADC, returning millivolts (and optionally also the raw ADC counts)
@@ -35,7 +35,7 @@ public:
     if (rawAdcOut != NULL) {
       *rawAdcOut = adcValue;
     }
-    return (adcValue - currentAdcIntercept_) * kCalibrationDenominator / currentAdcSlope_;
+    return (adcValue - currentAdcIntercept_) * kCalibrationDenominator * 1000 / currentAdcSlope_;
   }
 
   void setVoltageMv(int32_t setVoltage) {
@@ -144,17 +144,17 @@ public:
   // "Advanced API" that is one level of abstraction lower
   // but allows raw DAC/ADC counts for example for calibration
   uint16_t voltageToDac(int32_t voltageMv) {
-    return (int64_t)voltageMv * voltageDacSlope_ / kCalibrationDenominator + voltageDacIntercept_;
+    return (int64_t)voltageMv * voltageDacSlope_ / kCalibrationDenominator / 1000 + voltageDacIntercept_;
   }
   int32_t dacToVoltage(int32_t dacValue) {
-    return (int64_t)(dacValue - voltageDacIntercept_) * kCalibrationDenominator / voltageDacSlope_;
+    return (int64_t)(dacValue - voltageDacIntercept_) * kCalibrationDenominator * 1000 / voltageDacSlope_;
   }
 
   uint16_t currentToDac(int32_t currentMa) {
-    return (int64_t)currentMa * currentDacSlope_ / kCalibrationDenominator + currentDacIntercept_;
+    return (int64_t)currentMa * currentDacSlope_ / kCalibrationDenominator / 1000 + currentDacIntercept_;
   }
   int32_t dacToCurrent(int32_t dacValue) {
-    return (int64_t)(dacValue - currentDacIntercept_) * kCalibrationDenominator / currentDacSlope_;
+    return (int64_t)(dacValue - currentDacIntercept_) * kCalibrationDenominator * 1000 / currentDacSlope_;
   }
 
   // Slope and intercept are adcBits = volts * slope + intercept
