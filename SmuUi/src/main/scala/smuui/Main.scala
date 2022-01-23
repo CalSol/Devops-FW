@@ -95,7 +95,7 @@ object Main extends App {
   println(s"Read NV: ${smuDevice.getNvram().toProtoString}")
 
   val calCsv = CSVWriter.open(new File("cal.csv"))
-  calCsv.writeRow(Seq("measured", "adcVoltage", "adcCurrent", "dac"))
+  calCsv.writeRow(Seq("measured", "adcVoltage", "adcCurrent", "dacVoltage", "dacCurrentSource", "dacCurrentSink"))
 
   val kMaxVoltage = 20
   val kMinVoltage = 0
@@ -123,13 +123,12 @@ object Main extends App {
 //    getDacSeq(0.25, 5, 16, voltageToDac),
 //    getDacSeq(0.25, 1, 4, voltageToDac),
 
-    // For current sink calibration
-    getDacSeq(-4, 0, 64, currentToDac),
+    // For current sink calibration - top out at 2A because the BJT version PNP blew out around 3A
     getDacSeq(-2, 0, 16, currentToDac),
     getDacSeq(-0.5, 0, 4, currentToDac),
   ).flatten.distinct
       .sorted
-//      .reverse  // do not use in current sink mode
+      .reverse  // do not use in current sink mode
   //      .filter(_ == 1988)
 
   println(s"${calDacSequence.size} calibration points: ${calDacSequence.mkString(", ")}")
@@ -138,17 +137,19 @@ object Main extends App {
   for (dacValue <- calDacSequence) {
     var measured: String = ""
     var smuMeasured: Option[smu.MeasurementsRaw] = None
-    while (measured.isEmpty || smuMeasured.isEmpty) {  // allow user to re-send the command
-      smuDevice.command(SmuCommand(SmuCommand.Command.SetControlRaw(smu.ControlRaw(
-        // For voltage calibration
-//        voltage = dacValue,
-//        currentSource = currentToDac(0.25).toInt, currentSink = currentToDac(-0.25).toInt,
+    val control = smu.ControlRaw(
+      // For voltage calibration
+//      voltage = dacValue,
+//      currentSource = currentToDac(0.25).toInt, currentSink = currentToDac(-0.25).toInt,
 
-        // For current sink calibration
-        voltage = voltageToDac(0).toInt,
-        currentSource = currentToDac(0.25).toInt, currentSink = dacValue,
-        enable = true
-      ))))
+      // For current sink calibration
+              voltage = voltageToDac(0).toInt,
+              currentSource = currentToDac(0.25).toInt, currentSink = dacValue,
+      enable = true
+    )
+
+    while (measured.isEmpty || smuMeasured.isEmpty) {  // allow user to re-send the command
+      smuDevice.command(SmuCommand(SmuCommand.Command.SetControlRaw(control)))
       Thread.sleep(250)
       val response = smuDevice.command(SmuCommand(SmuCommand.Command.ReadMeasurementsRaw(smu.Empty())))
       smuMeasured = response.response.measurementsRaw
@@ -160,8 +161,9 @@ object Main extends App {
       }
     }
 
-    // For current sink calibration
-    calCsv.writeRow(Seq(measured, smuMeasured.get.voltage.toString, smuMeasured.get.current.toString, dacValue.toString))
+    calCsv.writeRow(Seq(measured,
+      smuMeasured.get.voltage.toString, smuMeasured.get.current.toString,
+      control.voltage.toString, control.currentSource.toString, control.currentSink.toString))
   }
 
   calCsv.close()
