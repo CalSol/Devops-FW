@@ -101,7 +101,19 @@ VGridWidget<2> widBoot(widBootContents);
 
 // Helper to allow the host to send CAN messages
 static bool transmitCANMessage(const CANMessage& msg) {
-  return CanBuffer.write(msg);
+  CanStatusLed.pulse(RgbActivity::kYellow);
+  debugInfo("TXReq %03x", msg.id);
+  return Can.write(msg);
+}
+
+static bool setBaudrate(int baudrate) {
+  debugInfo("Set baud = %i", baudrate);
+  return Can.frequency(baudrate) == 1;
+}
+
+static bool setMode(CAN::Mode mode) {
+  debugInfo("Set mode = %i", mode);
+  return Can.mode(mode) == 1;
 }
 
 
@@ -155,10 +167,8 @@ int main() {
 
   // Allow the SLCAN interface to transmit messages
   Slcan.setTransmitHandler(&transmitCANMessage);
-
-  // Silently ignore commands to change the mode/bitrate
-  // for compatibility with USBtinViewer
-  Slcan.setIgnoreConfigCommands(true);
+  Slcan.setBaudrateHandler(&setBaudrate);
+  Slcan.setModeHandler(&setMode);
 
   // CAN aggregate statistics
   uint16_t thisCanRxCount = 0;
@@ -171,6 +181,7 @@ int main() {
       if (LPC_C_CAN0->CANCNTL & (1 << 0)) {
         LPC_C_CAN0->CANCNTL &= ~(1 << 0);
         CanStatusLed.pulse(RgbActivity::kBlue);
+        debugInfo("CAN reset");
       }
     }
 
@@ -181,10 +192,12 @@ int main() {
         thisCanRxCount++;
         widCanRx.fresh();
         CanStatusLed.pulse(RgbActivity::kGreen);
+        debugInfo("RXMeg %03x", msg.data.msg.id);
       } else {
         thisCanErrCount++;
         widCanErr.fresh();
         CanStatusLed.pulse(RgbActivity::kRed);
+        debugInfo("RXErr %03x", msg.data.errId);
       }
     }
 
