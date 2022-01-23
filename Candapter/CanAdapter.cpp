@@ -102,7 +102,7 @@ VGridWidget<2> widBoot(widBootContents);
 // Helper to allow the host to send CAN messages
 static bool transmitCANMessage(const CANMessage& msg) {
   CanStatusLed.pulse(RgbActivity::kYellow);
-  debugInfo("TXReq %03x", msg.id);
+  debugInfo("TXReq %03lx %s %d", msg.id, (msg.type == CANStandard) ? "S" : "E", msg.len);
   return Can.write(msg);
 }
 
@@ -116,6 +116,66 @@ static bool setMode(CAN::Mode mode) {
   return Can.mode(mode) == 1;
 }
 
+void selfTest() {
+  uint8_t usbIndex = 0, canIndex = 0;
+  while (!SwitchUsb || !SwitchCan) {
+    if (UsbStatusTicker.checkExpired()) {  // to show liveness when there's no other activity
+      switch (usbIndex) {
+        case 1:  UsbStatusLed.pulse(RgbActivity::kRed);  break;
+        case 2:  UsbStatusLed.pulse(RgbActivity::kGreen);  break;
+        case 3:  UsbStatusLed.pulse(RgbActivity::kBlue);  break;
+        default:  UsbStatusLed.pulse(RgbActivity::kOff);  break;
+      }
+      usbIndex = (usbIndex + 1) % 4;
+    }
+    if (CanCheckTicker.checkExpired()) {  // to show liveness when there's no other activity
+      volatile uint32_t canTestReg;
+      switch (canIndex) {
+        case 1:  CanStatusLed.pulse(RgbActivity::kRed);  break;
+        case 2:  CanStatusLed.pulse(RgbActivity::kGreen);  break;
+        case 3:  CanStatusLed.pulse(RgbActivity::kBlue);  break;
+        case 4:  break;
+        case 5:  // drive high / recessive
+            LPC_C_CAN0->CANCNTL |= (1 << 7);  // enable test mode
+            LPC_C_CAN0->CANTEST = (LPC_C_CAN0->CANTEST & ~0x0060) | (0x03 << 5);
+            wait_ns(500);
+            canTestReg = LPC_C_CAN0->CANTEST;
+            if ((canTestReg & (1 << 7)) == 0) {  // TODO this agrees with the datasheet but not empirical observations
+              CanStatusLed.pulse(RgbActivity::kGreen);
+            } else {
+              CanStatusLed.pulse(RgbActivity::kRed);
+            }
+            break;  
+        case 6:  
+            LPC_C_CAN0->CANTEST = (LPC_C_CAN0->CANTEST & ~0x0060) | (0x02 << 5);
+            wait_ns(500);
+            canTestReg = LPC_C_CAN0->CANTEST;
+            if ((canTestReg & (1 << 7)) == (1 << 7)) {  // TODO this agrees with the datasheet but not empirical observations
+              CanStatusLed.pulse(RgbActivity::kGreen);
+            } else {
+              CanStatusLed.pulse(RgbActivity::kRed);
+            }
+            break;
+        case 7:  break;
+        default:  CanStatusLed.pulse(RgbActivity::kOff);  break;
+      }
+      canIndex = (canIndex + 1) % 8;
+    }
+
+    if (LcdTicker.checkExpired()) {
+      Lcd.clear();
+      widBoot.layout();
+      widBoot.draw(Lcd, 0, 0);
+      Lcd.update();
+    }
+
+    UsbStatusLed.update();
+    CanStatusLed.update();
+  }
+  LPC_C_CAN0->CANTEST = LPC_C_CAN0->CANTEST & ~0x0060;  // return control of CAN to controller
+  LPC_C_CAN0->CANCNTL &= ~(1 << 7);  // disable test mode
+  CanStatTicker.reset();
+}
 
 int main() {
   swdConsole.baud(115200);
@@ -132,38 +192,7 @@ int main() {
   Lcd.init();
   LcdLed = 1;
 
-  uint8_t usbIndex = 0, canIndex = 0;
-  while (!SwitchUsb || !SwitchCan) {
-    if (UsbStatusTicker.checkExpired()) {  // to show liveness when there's no other activity
-      switch (usbIndex) {
-        case 1:  UsbStatusLed.pulse(RgbActivity::kRed);  break;
-        case 2:  UsbStatusLed.pulse(RgbActivity::kGreen);  break;
-        case 3:  UsbStatusLed.pulse(RgbActivity::kBlue);  break;
-        default:  UsbStatusLed.pulse(RgbActivity::kOff);  break;
-      }
-      usbIndex = (usbIndex + 1) % 4;
-    }
-    if (CanCheckTicker.checkExpired()) {  // to show liveness when there's no other activity
-      switch (canIndex) {
-        case 1:  CanStatusLed.pulse(RgbActivity::kRed);  break;
-        case 2:  CanStatusLed.pulse(RgbActivity::kGreen);  break;
-        case 3:  CanStatusLed.pulse(RgbActivity::kBlue);  break;
-        default:  CanStatusLed.pulse(RgbActivity::kOff);  break;
-      }
-      canIndex = (canIndex + 1) % 4;
-    }
-
-    if (LcdTicker.checkExpired()) {
-      Lcd.clear();
-      widBoot.layout();
-      widBoot.draw(Lcd, 0, 0);
-      Lcd.update();
-    }
-
-    UsbStatusLed.update();
-    CanStatusLed.update();
-  }
-  CanStatTicker.reset();
+  selfTest();
 
   // Allow the SLCAN interface to transmit messages
   Slcan.setTransmitHandler(&transmitCANMessage);
@@ -192,13 +221,24 @@ int main() {
         thisCanRxCount++;
         widCanRx.fresh();
         CanStatusLed.pulse(RgbActivity::kGreen);
-        debugInfo("RXMeg %03x", msg.data.msg.id);
+        debugInfo("RXMeg %03lx %s %d", msg.data.msg.id, (msg.data.msg.type == CANStandard) ? "S" : "E", msg.data.msg.len);
       } else {
         thisCanErrCount++;
         widCanErr.fresh();
         CanStatusLed.pulse(RgbActivity::kRed);
-        debugInfo("RXErr %03x", msg.data.errId);
+        // debugInfo("RXErr %03x", msg.data.errId);
       }
+    }
+
+    // Loopback messages don't seem to trigger interrupts, so we need to directly read the CAN block
+    // TODO: can this cause a race condition with the interrupt?
+    CANMessage canMsg;
+    while (Can.read(canMsg)){
+        Slcan.putCANMessage(canMsg);
+        thisCanRxCount++;
+        widCanRx.fresh();
+        CanStatusLed.pulse(RgbActivity::kGreen);
+        debugInfo("C RXMsg %03lx %s %d", canMsg.id, (canMsg.type == CANStandard) ? "S" : "E", canMsg.len);
     }
 
     if (UsbSerial.connected()) {
