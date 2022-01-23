@@ -83,7 +83,7 @@ object Main extends App {
   println(s"Read NV: ${smuDevice.getNvram().toProtoString}")
 
   val updateNvramData = SmuDevice(
-    serial = "1-02",
+//    serial = "1-02",
     voltageAdcCalibration = Some(device.Calibration(slope = 62.05950631f, intercept = 2034.809922f)),
     voltageDacCalibration = Some(device.Calibration(slope = -62.35722278f, intercept = 2041.427676f)),
   )

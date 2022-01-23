@@ -34,6 +34,7 @@ message SmuCommand {
 
     Empty readNvram = 41;
     SmuDevice updateNvram = 42;  // acknowledge response only
+    SmuDevice setNvram = 43;  // acknowledge response only
   }
 }
 
