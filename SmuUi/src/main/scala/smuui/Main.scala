@@ -95,7 +95,7 @@ object Main extends App {
   println(s"Read NV: ${smuDevice.getNvram().toProtoString}")
 
   val calCsv = CSVWriter.open(new File("cal.csv"))
-  calCsv.writeRow(Seq("measured", "adc", "dac"))
+  calCsv.writeRow(Seq("measured", "adcVoltage", "adcCurrent", "dac"))
 
   val kMaxVoltage = 20
   val kMinVoltage = 0
@@ -160,11 +160,8 @@ object Main extends App {
       }
     }
 
-    // For voltage calibration
-//    calCsv.writeRow(Seq(measured, measurement.voltage.toString, dacValue.toString))
-
     // For current sink calibration
-    calCsv.writeRow(Seq(measured, smuMeasured.get.current.toString, dacValue.toString))
+    calCsv.writeRow(Seq(measured, smuMeasured.get.voltage.toString, smuMeasured.get.current.toString, dacValue.toString))
   }
 
   calCsv.close()
