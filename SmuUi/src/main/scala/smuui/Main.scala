@@ -84,14 +84,18 @@ object Main extends App {
 
   val updateNvramData = SmuDevice(
 //    serial = "1-02",
-    voltageAdcCalibration = Some(device.Calibration(slope = 62.05950631f, intercept = 2034.809922f)),
-    voltageDacCalibration = Some(device.Calibration(slope = -62.35722278f, intercept = 2041.427676f)),
+//    voltageAdcCalibration = Some(device.Calibration(slope = 62.05950631f, intercept = 2034.809922f)),
+//    voltageDacCalibration = Some(device.Calibration(slope = -62.35722278f, intercept = 2041.427676f)),
+
+//    serial = "1-01",
+//    voltageAdcCalibration = Some(device.Calibration(slope = 62.59849778f, intercept = 2041.890777f)),
+//    voltageDacCalibration = Some(device.Calibration(slope = -62.3009151f, intercept = 2047.419768f)),
   )
   println(s"Update NV: ${smuDevice.updateNvram(updateNvramData)} (${updateNvramData.serializedSize} B)")
   println(s"Read NV: ${smuDevice.getNvram().toProtoString}")
 
   val calCsv = CSVWriter.open(new File("cal.csv"))
-  calCsv.writeRow(Seq("voltageDac", "voltageAdc", "actualVolts"))
+  calCsv.writeRow(Seq("measured", "adc", "dac"))
 
   val kMaxVoltage = 20
   val kMinVoltage = 0
@@ -107,42 +111,60 @@ object Main extends App {
     val kCurrentRatio = 10.000
     kDacCenter - (current * kDacCounts / kCurrentRatio / kVref)
   }
-  def getVoltagesSeq(lowVoltage: Double, highVoltage: Double, by: Int): Seq[Int] = {
-    val lowDac = ((voltageToDac(highVoltage) / by).floor * by).toInt
-    val highDac = ((voltageToDac(lowVoltage) / by).ceil * by).toInt
+  def getDacSeq(lowValue: Double, highValue: Double, by: Int, convert: Double => Double): Seq[Int] = {
+    val lowDac = ((convert(highValue) / by).floor * by).toInt
+    val highDac = ((convert(lowValue) / by).ceil * by).toInt
     (lowDac to highDac by by)
   }
 
   val calDacSequence = Seq(
-    getVoltagesSeq(0, 20, 64),
-    getVoltagesSeq(0.25, 5, 16),
-    getVoltagesSeq(0.25, 1, 4),
+    // For voltage calibration
+//    getDacSeq(0, 20, 64, voltageToDac),
+//    getDacSeq(0.25, 5, 16, voltageToDac),
+//    getDacSeq(0.25, 1, 4, voltageToDac),
+
+    // For current sink calibration
+    getDacSeq(-4, 0, 64, currentToDac),
+    getDacSeq(-2, 0, 16, currentToDac),
+    getDacSeq(-0.5, 0, 4, currentToDac),
   ).flatten.distinct
-      .sorted.reverse
+      .sorted
+//      .reverse  // do not use in current sink mode
   //      .filter(_ == 1988)
 
   println(s"${calDacSequence.size} calibration points: ${calDacSequence.mkString(", ")}")
   readLine()
 
   for (dacValue <- calDacSequence) {
-    var actualVolts: String = ""
-    var measurement: smu.MeasurementsRaw = null
-    while (actualVolts.isEmpty) {  // allow user to re-send the command
+    var measured: String = ""
+    var smuMeasured: Option[smu.MeasurementsRaw] = None
+    while (measured.isEmpty || smuMeasured.isEmpty) {  // allow user to re-send the command
       smuDevice.command(SmuCommand(SmuCommand.Command.SetControlRaw(smu.ControlRaw(
-        voltage = dacValue, currentSource = 2042 - 34, currentSink = 2042 + 34,
+        // For voltage calibration
+//        voltage = dacValue,
+//        currentSource = currentToDac(0.25).toInt, currentSink = currentToDac(-0.25).toInt,
+
+        // For current sink calibration
+        voltage = voltageToDac(0).toInt,
+        currentSource = currentToDac(0.25).toInt, currentSink = dacValue,
         enable = true
       ))))
       Thread.sleep(250)
       val response = smuDevice.command(SmuCommand(SmuCommand.Command.ReadMeasurementsRaw(smu.Empty())))
-      measurement = response.response.measurementsRaw.get
+      smuMeasured = response.response.measurementsRaw
+      if (smuMeasured.isDefined) {
+        println(s"DAC=$dacValue, meas=${smuMeasured.get}, enter measured:")
 
-      println(s"DAC=$dacValue, meas=${measurement.voltage}, enter actual voltage:")
-
-      actualVolts = readLine()
-      calCsv.flush()
+        measured = readLine()
+        calCsv.flush()
+      }
     }
 
-    calCsv.writeRow(Seq(actualVolts, dacValue.toString, measurement.voltage.toString))
+    // For voltage calibration
+//    calCsv.writeRow(Seq(measured, measurement.voltage.toString, dacValue.toString))
+
+    // For current sink calibration
+    calCsv.writeRow(Seq(measured, smuMeasured.get.current.toString, dacValue.toString))
   }
 
   calCsv.close()

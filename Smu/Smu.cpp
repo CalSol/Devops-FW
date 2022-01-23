@@ -448,10 +448,10 @@ int main() {
         } else if (decoded.which_command == SmuCommand_updateNvram_tag) {
           // Re-encode and decode this particularr message over the existing NV config
           pb_ostream_t outStream = pb_ostream_from_buffer(nvBuffer, sizeof(nvBuffer));
-          pb_encode_ex(&outStream, SmuDevice_fields, &nvDecoded, PB_ENCODE_DELIMITED);
+          pb_encode_ex(&outStream, SmuDevice_fields, &decoded.command.updateNvram, PB_ENCODE_DELIMITED);
 
           pb_istream_t inStream = pb_istream_from_buffer(nvBuffer, sizeof(nvBuffer));
-          bool decodeSuccess = pb_decode_ex(&stream, SmuDevice_fields, &nvDecoded, PB_DECODE_NOINIT | PB_DECODE_DELIMITED);
+          pb_decode_ex(&inStream, SmuDevice_fields, &nvDecoded, PB_DECODE_NOINIT | PB_DECODE_DELIMITED);
 
           outStream = pb_ostream_from_buffer(nvBuffer, sizeof(nvBuffer));
           pb_encode_ex(&outStream, SmuDevice_fields, &(nvDecoded), PB_ENCODE_DELIMITED);
