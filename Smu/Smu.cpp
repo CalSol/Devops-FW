@@ -32,6 +32,10 @@
 #include "device.pb.h"
 #include "smu.pb.h"
 
+#include "ProtoCoder.h"
+#include "EepromProto.h"
+
+
 /*
  * Local peripheral definitions
  */
@@ -139,9 +143,7 @@ ButtonGesture SwitchCGesture(SwitchC);
 //
 // NVRAM
 //
-size_t kEepromAddr = 0;
-uint8_t nvBuffer[SmuDevice_size + 1];
-SmuDevice nvDecoded = SmuDevice_init_default;
+EepromProto<SmuDevice, SmuDevice_size + 1> NvConfig(SmuDevice_msg);
 
 //
 // LCD and widgets
@@ -247,40 +249,34 @@ int main() {
   //
   // Read NV config
   //
-  EEPROM::init();
-  EEPROM::read(kEepromAddr, nvBuffer, sizeof(nvBuffer));
-  debugInfo("NV size: %i", nvBuffer[0] + 1);
-  
-  pb_istream_t stream = pb_istream_from_buffer(nvBuffer, sizeof(nvBuffer));
-  bool nvDecodeSuccess = pb_decode_ex(&stream, SmuDevice_fields, &nvDecoded, PB_DECODE_DELIMITED);
-  if (!nvDecodeSuccess) {
+  if (!NvConfig.readFromEeeprom()) {
     debugWarn("NV read failed");
   } else {
-    widSerial.setValue(nvDecoded.serial);
+    widSerial.setValue(NvConfig.pb.serial);
   }
 
-  UsbHidSmu UsbHid(nvDecoded.serial, 64, 64, false);
+  UsbHidSmu UsbHid(NvConfig.pb.serial, 64, 64, false);
 
-  if (nvDecoded.has_voltageAdcCalibration) {
+  if (NvConfig.pb.has_voltageAdcCalibration) {
     debugInfo("Load V ADC calibration");
-    Smu.setVoltageAdcCalibration(nvDecoded.voltageAdcCalibration.slope, nvDecoded.voltageAdcCalibration.intercept);
+    Smu.setVoltageAdcCalibration(NvConfig.pb.voltageAdcCalibration.slope, NvConfig.pb.voltageAdcCalibration.intercept);
   }
-  if (nvDecoded.has_currentAdcCalibration) {
+  if (NvConfig.pb.has_currentAdcCalibration) {
     debugInfo("Load I ADC calibration");
-    Smu.setCurrentAdcCalibration(nvDecoded.currentAdcCalibration.slope, nvDecoded.currentAdcCalibration.intercept);
+    Smu.setCurrentAdcCalibration(NvConfig.pb.currentAdcCalibration.slope, NvConfig.pb.currentAdcCalibration.intercept);
   }
-  if (nvDecoded.has_voltageDacCalibration) {
+  if (NvConfig.pb.has_voltageDacCalibration) {
     debugInfo("Load V DAC calibration");
-    Smu.setVoltageDacCalibration(nvDecoded.voltageDacCalibration.slope, nvDecoded.voltageDacCalibration.intercept);
+    Smu.setVoltageDacCalibration(NvConfig.pb.voltageDacCalibration.slope, NvConfig.pb.voltageDacCalibration.intercept);
   }
-  if (nvDecoded.has_currentSourceDacCalibration) {
+  if (NvConfig.pb.has_currentSourceDacCalibration) {
     debugInfo("Load ISrc DAC calibration");
-    Smu.setCurrentDacCalibration(nvDecoded.currentSourceDacCalibration.slope, nvDecoded.currentSourceDacCalibration.intercept);
+    Smu.setCurrentDacCalibration(NvConfig.pb.currentSourceDacCalibration.slope, NvConfig.pb.currentSourceDacCalibration.intercept);
   }
-  if (nvDecoded.has_currentSinkDacCalibration) {
+  if (NvConfig.pb.has_currentSinkDacCalibration) {
     debugWarn("Load ISnk DAC calibration");
     // TODO needs SmuAnalog::setCurrentSinkDacCalibration - if thats even useful
-    Smu.setCurrentDacCalibration(nvDecoded.currentSinkDacCalibration.slope, nvDecoded.currentSinkDacCalibration.intercept);
+    Smu.setCurrentDacCalibration(NvConfig.pb.currentSinkDacCalibration.slope, NvConfig.pb.currentSinkDacCalibration.intercept);
   }
 
   //
@@ -443,29 +439,13 @@ int main() {
           }
         } else if (decoded.which_command == SmuCommand_readNvram_tag) {
           response.which_response = SmuResponse_readNvram_tag;
-          memcpy(&response.response.readNvram, &nvDecoded, sizeof(nvDecoded));
-          response.response.readNvram = nvDecoded;
+          response.response.readNvram = NvConfig.pb;
         } else if (decoded.which_command == SmuCommand_updateNvram_tag) {
-          // Re-encode and decode this particularr message over the existing NV config
-          pb_ostream_t outStream = pb_ostream_from_buffer(nvBuffer, sizeof(nvBuffer));
-          pb_encode_ex(&outStream, SmuDevice_fields, &decoded.command.updateNvram, PB_ENCODE_DELIMITED);
-
-          pb_istream_t inStream = pb_istream_from_buffer(nvBuffer, sizeof(nvBuffer));
-          pb_decode_ex(&inStream, SmuDevice_fields, &nvDecoded, PB_DECODE_NOINIT | PB_DECODE_DELIMITED);
-
-          outStream = pb_ostream_from_buffer(nvBuffer, sizeof(nvBuffer));
-          pb_encode_ex(&outStream, SmuDevice_fields, &(nvDecoded), PB_ENCODE_DELIMITED);
-          EEPROM::write(kEepromAddr, nvBuffer, nvBuffer[0] + 1);
-          
-          debugInfo("HID:UpdateNvram: write %i bytes", nvBuffer[0] + 1);
+          NvConfig.update_from(decoded.command.updateNvram);
+          NvConfig.writeToEeprom();
         } else if (decoded.which_command == SmuCommand_setNvram_tag) {
-          nvDecoded = decoded.command.setNvram;
-          
-          pb_ostream_t outStream = pb_ostream_from_buffer(nvBuffer, sizeof(nvBuffer));
-          pb_encode_ex(&outStream, SmuDevice_fields, &(nvDecoded), PB_ENCODE_DELIMITED);
-          EEPROM::write(kEepromAddr, nvBuffer, nvBuffer[0] + 1);
-          
-          debugInfo("HID:SetNvram: write %i bytes", nvBuffer[0] + 1);
+          NvConfig.pb = decoded.command.setNvram;
+          NvConfig.writeToEeprom();
         }
 
         HID_REPORT sendHidReport;
