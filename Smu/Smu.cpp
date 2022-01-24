@@ -76,8 +76,9 @@ public:
     return stringImanufacturerDescriptor;
   }
 
-  uint8_t * stringIserialDesc() {
-    return stringIserialDescriptor_;
+  const uint8_t * stringIserialDesc() {
+    // effectively const
+    return (const uint8_t*)stringIserialDescriptor_;
   }
 
   // USB HID overrides
