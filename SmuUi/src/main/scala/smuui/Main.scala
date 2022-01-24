@@ -84,8 +84,10 @@ object Main extends App {
 
   val updateNvramData = SmuDevice(
 //    serial = "1-02",
-//    voltageAdcCalibration = Some(device.Calibration(slope = 62.05950631f, intercept = 2034.809922f)),
-//    voltageDacCalibration = Some(device.Calibration(slope = -62.35722278f, intercept = 2041.427676f)),
+    voltageAdcCalibration = Some(device.Calibration(slope = 62.1251086354339f, intercept = 2034.62983939408f)),
+    voltageDacCalibration = Some(device.Calibration(slope = -62.5880492671842f, intercept = 2042.21008013648f)),
+    currentAdcCalibration = Some(device.Calibration(slope = 148.587264315509f, intercept = 2032.83594333311f)),
+    currentSourceDacCalibration = Some(device.Calibration(slope = -149.763922762659f, intercept = 2045.90086046013f)),
 
 //    serial = "1-01",
 //    voltageAdcCalibration = Some(device.Calibration(slope = 62.59849778f, intercept = 2041.890777f)),
@@ -106,13 +108,16 @@ object Main extends App {
   val kDacCounts = 4095
   val kDacCenter = 2048
   val kVref = 3.0
+  val kVoltageRatio = 22.148
+  val kCurrentRatio = 10.000
   def voltageToDac(voltage: Double): Double = {
-    val kVoltageRatio = 22.148
     kDacCenter - (voltage * kDacCounts / kVoltageRatio / kVref)
   }
   def currentToDac(current: Double): Double = {
-    val kCurrentRatio = 10.000
     kDacCenter - (current * kDacCounts / kCurrentRatio / kVref)
+  }
+  def dacToCurrent(dac: Int): Double = {
+    (kDacCenter - dac).toDouble / kDacCounts * kCurrentRatio * kVref
   }
   def getDacSeq(lowValue: Double, highValue: Double, by: Int, convert: Double => Double): Seq[Int] = {
     val lowDac = ((convert(highValue) / by).floor * by).toInt
@@ -126,13 +131,20 @@ object Main extends App {
 //    getDacSeq(0.25, 5, 16, voltageToDac),
 //    getDacSeq(0.25, 1, 4, voltageToDac),
 
+    // For simultaneous calibration using a resistive load
+//    getDacSeq(0.25, 10, 64, voltageToDac),
+//    getDacSeq(0.25, 2.5, 16, voltageToDac),
+
+    // For current source calibration using a resistive load
+    getDacSeq(0, 1, 16, currentToDac),
+    getDacSeq(0, 0.25, 4, currentToDac),
+
     // For current sink calibration - top out at 2A because the BJT version PNP blew out around 3A
-    getDacSeq(-2, 0, 16, currentToDac),
-    getDacSeq(-0.5, 0, 4, currentToDac),
+//    getDacSeq(-2, 0, 16, currentToDac),
+//    getDacSeq(-0.5, 0, 4, currentToDac),
   ).flatten.distinct
       .sorted
       .reverse  // do not use in current sink mode
-  //      .filter(_ == 1988)
 
   println(s"${calDacSequence.size} calibration points: ${calDacSequence.mkString(", ")}")
   readLine()
@@ -145,9 +157,18 @@ object Main extends App {
 //      voltage = dacValue,
 //      currentSource = currentToDac(0.25).toInt, currentSink = currentToDac(-0.25).toInt,
 
+      // For simultaneous calibration using a resistive load
+//      voltage = dacValue,
+//      currentSource = currentToDac(1.25).toInt, currentSink = currentToDac(-0.25).toInt,
+
+      // For current source calibration using a resistive load
+      voltage = voltageToDac(dacToCurrent(dacValue) * 11 + 1).toInt,
+      currentSource = dacValue,
+      currentSink = currentToDac(-0.25).toInt,
+
       // For current sink calibration
-              voltage = voltageToDac(0).toInt,
-              currentSource = currentToDac(0.25).toInt, currentSink = dacValue,
+//      voltage = voltageToDac(0).toInt,
+//      currentSource = currentToDac(0.25).toInt, currentSink = dacValue,
       enable = true
     )
 
