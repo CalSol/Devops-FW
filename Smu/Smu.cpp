@@ -497,7 +497,6 @@ int main() {
     }
 
     if (Smu.getState() == SmuAnalogStage::SmuState::kEnabled) {
-      EnableHigh = 1;
       widEnable.setValue(" ENA ");
       widEnable.setContrast(kContrastActive);
 
@@ -514,8 +513,6 @@ int main() {
         StatusLed.pulse(RgbActivity::kOff);
       }
     } else {
-      EnableHigh = 0;
-      EnableLow = 0;
       widEnable.setValue(" DIS ");
       widEnable.setContrast(kContrastStale);
 

@@ -103,16 +103,17 @@ public:
         enableSink_ = 0;
         break;
       case SmuState::kResetIntegrator:
-        enableSource_ = 0;
-        enableSink_ = 0;
         if (timer_.read_ms() >= kIntegratorResetTimeMs) {
           writeVoltage(targetVoltageDac_);
           if (startSourceDriver_) {
             enableSource_ = 1;
+            enableSink_ = 0;
           } else {
+            enableSource_ = 0;
             enableSink_ = 1;
           }
           state_ = SmuState::kSingleEnable;
+          timer_.reset();
         }
         break;
       case SmuState::kSingleEnable:
