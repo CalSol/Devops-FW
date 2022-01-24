@@ -250,10 +250,12 @@ int main() {
   //
   // Read NV config
   //
-  if (!NvConfig.readFromEeeprom()) {
-    debugWarn("NV read failed");
-  } else {
+  size_t nvRead = NvConfig.readFromEeeprom();
+  if (nvRead > 0) {
+    debugInfo("NV read: %i bytes", nvRead);
     widSerial.setValue(NvConfig.pb.serial);
+  } else {
+    debugWarn("NV read failed");
   }
 
   UsbHidSmu UsbHid(NvConfig.pb.serial, 64, 64, false);
@@ -443,10 +445,12 @@ int main() {
           response.response.readNvram = NvConfig.pb;
         } else if (decoded.which_command == SmuCommand_updateNvram_tag) {
           NvConfig.update_from(decoded.command.updateNvram);
-          NvConfig.writeToEeprom();
+          size_t nvWritten = NvConfig.writeToEeprom();
+          debugInfo("HID:updateNvram: wrote %i", nvWritten);
         } else if (decoded.which_command == SmuCommand_setNvram_tag) {
           NvConfig.pb = decoded.command.setNvram;
-          NvConfig.writeToEeprom();
+          size_t nvWritten = NvConfig.writeToEeprom();
+          debugInfo("HID:setNvram: wrote %i", nvWritten);
         }
 
         HID_REPORT sendHidReport;

@@ -12,21 +12,25 @@ public:
   }
 
   // Read the EEPROM and decode the proto
-  bool readFromEeeprom() {
+  // Returns the size of the proto structure, or 0 if it failed to decode
+  size_t readFromEeeprom() {
     EEPROM::init();
     EEPROM::read(kEepromAddr_, this->bytes_, sizeof(this->bytes_));
-    return this->decode();
+    return this->decode() ? (this->bytes_[0] + 1) : 0;
   }
 
   // Encodes the proto and writes it to EEPROM
-  bool writeToEeprom() {
+  // Returns the size of the proto structure, or 0 if it failed to encode
+  size_t writeToEeprom() {
     bool success = this->encode() != NULL;
     if (success) {
       EEPROM::init();
       // TODO support proto > 127 bytes and do a proper varint encoding
       EEPROM::write(kEepromAddr_, this->bytes_, this->bytes_[0] + 1);
+      return this->bytes_[0] + 1;
+    } else {
+      return 0;
     }
-    return success;
   }
 
 protected:

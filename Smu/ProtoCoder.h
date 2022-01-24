@@ -4,6 +4,9 @@
 #include <pb_encode.h>
 #include <pb_decode.h>
 
+#define DEBUG_ENABLED
+#include "debug.h"
+
 #ifndef __PROTO_CODER_H__
 #define __PROTO_CODER_H__
 
@@ -24,7 +27,7 @@ public:
   // Serializes this proto to the target byte array. Returns success (true) or failure (false)
   bool encode_to(uint8_t *bytes, size_t bytesSize, unsigned int flags = 0) {
     flags |= encodingFlags();
-    pb_ostream_t stream = pb_ostream_from_buffer(bytes, sizeof(bytesSize));
+    pb_ostream_t stream = pb_ostream_from_buffer(bytes, bytesSize);
     return pb_encode_ex(&stream, &fields_, &pb, flags);
   }
 
@@ -78,7 +81,7 @@ public:
 
   // Serializes this proto to the internal buffer, returning the internal buffer (if successful) or NULL (if not).
   uint8_t* encode() {
-    if (this->encode_to(bytes_, BufferSize)) {
+    if (this->encode_to(bytes_, sizeof(bytes_))) {
       return bytes_;
     } else {
       return NULL;
@@ -87,7 +90,7 @@ public:
 
   // Deserializes a proto from the internal buffer
   bool decode() {
-    return this->decode_from(bytes_, BufferSize);
+    return this->decode_from(bytes_, sizeof(bytes_));
   }
 
   // Updates the current values from another proto, by serializing and deserializing the update.
