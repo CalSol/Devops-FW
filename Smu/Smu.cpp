@@ -58,7 +58,7 @@ public:
       USBHID(output_report_length, input_report_length, 0x1209, 0x0007, 0x0001, connect) {
     // Serial descriptor seemingly must be provided on start
     size_t serialLength = strlen(serial);
-    stringIserialDescriptor_[0] = 2 + 0*serialLength;  // bLength
+    stringIserialDescriptor_[0] = 2 + 2*serialLength;  // bLength
     stringIserialDescriptor_[1] = STRING_DESCRIPTOR;
     for (size_t i=0; i<min(serialLength, sizeof(SmuDevice::serial)); i++) {
       stringIserialDescriptor_[2 + 2*i] = serial[i];

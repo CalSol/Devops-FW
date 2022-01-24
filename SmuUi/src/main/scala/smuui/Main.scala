@@ -90,8 +90,8 @@ object Main extends App {
 //    serial = "1-01",
 //    voltageAdcCalibration = Some(device.Calibration(slope = 62.59849778f, intercept = 2041.890777f)),
 //    voltageDacCalibration = Some(device.Calibration(slope = -62.3009151f, intercept = 2047.419768f)),
-    currentAdcCalibration = Some(device.Calibration(slope = 136.8785618f, intercept = 2042.29232f)),
-    currentSinkDacCalibration = Some(device.Calibration(slope = -137.0626929f, intercept = 2048.703187f)),
+//    currentAdcCalibration = Some(device.Calibration(slope = 136.8785618f, intercept = 2042.29232f)),
+//    currentSinkDacCalibration = Some(device.Calibration(slope = -137.0626929f, intercept = 2048.703187f)),
   )
   println(s"Update NV: ${smuDevice.updateNvram(updateNvramData)} (${updateNvramData.serializedSize} B)")
   val readNv = smuDevice.getNvram()
