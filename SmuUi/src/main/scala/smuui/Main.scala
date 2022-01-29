@@ -43,6 +43,10 @@ class SmuInterface(device: HidDevice) {
     command(SmuCommand(SmuCommand.Command.UpdateNvram(value=nvram)))
   }
 
+  def setNvram(nvram: SmuDevice): SmuResponse = {
+    command(SmuCommand(SmuCommand.Command.SetNvram(value=nvram)))
+  }
+
   // Reads a HID packet and decodes the proto
   protected def read(): Option[SmuResponse] = {
     val readData = device.read().map(_.toByte)
@@ -79,15 +83,12 @@ object Main extends App {
   val smuDevice = new SmuInterface(smuDevices.head)
   println(s"Device opened: $smuDevice")
 
-  println(s"Device info: ${smuDevice.getDeviceInfo().toProtoString}")
-  println(s"Read NV: ${smuDevice.getNvram().toProtoString}")
-
   val updateNvramData = SmuDevice(
 //    serial = "1-02",
-    voltageAdcCalibration = Some(device.Calibration(slope = 62.1251086354339f, intercept = 2034.62983939408f)),
-    voltageDacCalibration = Some(device.Calibration(slope = -62.5880492671842f, intercept = 2042.21008013648f)),
-    currentAdcCalibration = Some(device.Calibration(slope = 148.587264315509f, intercept = 2032.83594333311f)),
-    currentSourceDacCalibration = Some(device.Calibration(slope = -149.763922762659f, intercept = 2045.90086046013f)),
+//    voltageAdcCalibration = Some(device.Calibration(slope = 62.1251086354339f, intercept = 2034.62983939408f)),
+//    voltageDacCalibration = Some(device.Calibration(slope = -62.5880492671842f, intercept = 2042.21008013648f)),
+//    currentAdcCalibration = Some(device.Calibration(slope = 148.587264315509f, intercept = 2032.83594333311f)),
+//    currentSourceDacCalibration = Some(device.Calibration(slope = -149.763922762659f, intercept = 2045.90086046013f)),
 
 //    serial = "1-01",
 //    voltageAdcCalibration = Some(device.Calibration(slope = 62.59849778f, intercept = 2041.890777f)),
@@ -95,12 +96,11 @@ object Main extends App {
 //    currentAdcCalibration = Some(device.Calibration(slope = 136.8785618f, intercept = 2042.29232f)),
 //    currentSinkDacCalibration = Some(device.Calibration(slope = -137.0626929f, intercept = 2048.703187f)),
   )
+  println(s"Device info: ${smuDevice.getDeviceInfo().toProtoString}")
+  println(s"Read NV: ${smuDevice.getNvram().toProtoString}")
   println(s"Update NV: ${smuDevice.updateNvram(updateNvramData)} (${updateNvramData.serializedSize} B)")
   val readNv = smuDevice.getNvram()
   println(s"Read NV (${readNv.serializedSize}): ${readNv.toProtoString}")
-
-  val calCsv = CSVWriter.open(new File("cal.csv"))
-  calCsv.writeRow(Seq("measured", "adcVoltage", "adcCurrent", "dacVoltage", "dacCurrentSource", "dacCurrentSink"))
 
   val kMaxVoltage = 20
   val kMinVoltage = 0
@@ -148,6 +148,9 @@ object Main extends App {
 
   println(s"${calDacSequence.size} calibration points: ${calDacSequence.mkString(", ")}")
   readLine()
+
+  val calCsv = CSVWriter.open(new File("cal.csv"))
+  calCsv.writeRow(Seq("measured", "adcVoltage", "adcCurrent", "dacVoltage", "dacCurrentSource", "dacCurrentSink"))
 
   for (dacValue <- calDacSequence) {
     var measured: String = ""

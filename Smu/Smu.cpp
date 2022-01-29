@@ -449,6 +449,8 @@ int main() {
           NvConfig.pb = command.pb.command.setNvram;
           size_t nvWritten = NvConfig.writeToEeprom();
           debugInfo("HID:setNvram: wrote %i", nvWritten);
+        } else {
+          debugWarn("HID: unknown command %i", command.pb.which_command);
         }
 
         HID_REPORT sendHidReport;
