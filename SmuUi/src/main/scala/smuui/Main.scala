@@ -33,7 +33,7 @@ class HidDeviceProto[WriteType <: GeneratedMessage, ReadType <: GeneratedMessage
     while (bytesWritten < outputBytes.length) {
       val remainingBytes = outputBytes.length - bytesWritten
       val packetData = (Seq(0.toByte)
-          ++ outputBytes.slice(bytesWritten, math.min(sendReportSize - 1, remainingBytes))).toArray
+          ++ outputBytes.slice(bytesWritten, bytesWritten + math.min(sendReportSize - 1, remainingBytes))).toArray
       val writeResult = device.write(packetData, packetData.length, 0)
       if (writeResult < 0) {
         println(s"Write error $writeResult")  // TODO better logging / error infra
@@ -144,7 +144,6 @@ object Main extends App {
 //    currentSinkDacCalibration = Some(device.Calibration(slope = -137.0626929f, intercept = 2048.703187f)),
   )
   println(s"Device info: ${smuDevice.getDeviceInfo().toProtoString}")
-//  println(s"Read NV: ${smuDevice.getNvram().toProtoString}")
 //  println(s"Update NV: ${smuDevice.updateNvram(updateNvramData)} (${updateNvramData.serializedSize} B)")
   val readNv = smuDevice.getNvram()
   println(s"Read NV (${readNv.serializedSize}): ${readNv.toProtoString}")
