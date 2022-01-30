@@ -1,10 +1,11 @@
 package smuui
 
 import com.github.tototoshi.csv.CSVWriter
-import org.hid4java.event.HidServicesEvent
-import org.hid4java.{HidDevice, HidManager, HidServicesListener, HidServicesSpecification}
+import com.google.protobuf.CodedInputStream
+import org.hid4java.{HidDevice, HidManager, HidServicesSpecification}
 
 import scala.jdk.CollectionConverters.CollectionHasAsScala
+import scalapb.{GeneratedMessage, GeneratedMessageCompanion}
 import smu.{SmuCommand, SmuResponse}
 import device.SmuDevice
 
@@ -12,8 +13,67 @@ import java.io.{ByteArrayInputStream, ByteArrayOutputStream, File}
 import scala.io.StdIn.readLine
 
 
+// Wrapper around the HID device that implements the serialized-proto-over-reports format
+// and supports multi-report chunking.
+class HidDeviceProto[WriteType <: GeneratedMessage, ReadType <: GeneratedMessage](
+    device: HidDevice, sendReportSize: Int,
+    writeObj: GeneratedMessageCompanion[WriteType], readObj: GeneratedMessageCompanion[ReadType]) {
+  def write(pb: WriteType): Unit = {
+    val outputStream = new ByteArrayOutputStream()
+    pb.writeDelimitedTo(outputStream)
+    val outputBytes = outputStream.toByteArray
+
+    val packetData = outputBytes.slice(0, math.min(sendReportSize, outputBytes.length))
+    val writeResult = device.write(packetData, packetData.length, 0)
+    if (writeResult < 0) {
+      println(s"Write error $writeResult")  // TODO better logging / error infra
+    }
+    var bytesWritten: Int = packetData.length
+
+    while (bytesWritten < outputBytes.length) {
+      val remainingBytes = outputBytes.length - bytesWritten
+      val packetData = (Seq(0.toByte)
+          ++ outputBytes.slice(bytesWritten, math.min(sendReportSize - 1, remainingBytes))).toArray
+      val writeResult = device.write(packetData, packetData.length, 0)
+      if (writeResult < 0) {
+        println(s"Write error $writeResult")  // TODO better logging / error infra
+      }
+      bytesWritten += packetData.length
+    }
+  }
+
+  def read(): Option[ReadType] = {
+    var readData = device.read().map(_.toByte)
+    if (readData.isEmpty) {
+      println(s"Empty read data (timeout?)")  // TODO better logging / error infra
+      return None
+    }
+    val readStream = new ByteArrayInputStream(readData)  // for decoding the size varint only
+    val size = CodedInputStream.readRawVarint32(readStream.read(), readStream)
+
+    var bytesReceived: Int = readData.length
+    while (bytesReceived < size) {
+      val continuedReadData = device.read().map(_.toByte)
+      if (continuedReadData.isEmpty) {
+        println(s"Empty read data (timeout?)")  // TODO better logging / error infra
+        return None
+      }
+      if (continuedReadData(0) != 0) {
+        println(s"Continued report with first byte != 0")  // TODO better logging / error infra
+        return None
+      }
+      readData = readData ++ continuedReadData.tail
+      bytesReceived += continuedReadData.length
+    }
+
+    readObj.parseDelimitedFrom(new ByteArrayInputStream(readData))
+  }
+}
+
+
 class SmuInterface(device: HidDevice) {
   device.open()
+  protected val deviceProto = new HidDeviceProto(device, 64, SmuCommand, SmuResponse)
 
   override def toString: String = device.toString
 
@@ -25,8 +85,8 @@ class SmuInterface(device: HidDevice) {
   def command(command: SmuCommand): SmuResponse = {
     var response: Option[SmuResponse] = None
     while (response.isEmpty) {
-      write(command)
-      response = read()
+      deviceProto.write(command)
+      response = deviceProto.read()
     }
     response.get
   }
@@ -45,22 +105,6 @@ class SmuInterface(device: HidDevice) {
 
   def setNvram(nvram: SmuDevice): SmuResponse = {
     command(SmuCommand(SmuCommand.Command.SetNvram(value=nvram)))
-  }
-
-  // Reads a HID packet and decodes the proto
-  protected def read(): Option[SmuResponse] = {
-    val readData = device.read().map(_.toByte)
-    if (readData.isEmpty) {
-      println("Receive timed out")
-    }
-    SmuResponse.parseDelimitedFrom(new ByteArrayInputStream(readData))
-  }
-
-  protected def write(command: SmuCommand): Unit = {
-    val outputStream = new ByteArrayOutputStream()
-    command.writeDelimitedTo(outputStream)
-    val outputBytes = outputStream.toByteArray
-    device.write(outputBytes, outputBytes.size, 0)
   }
 }
 
@@ -100,8 +144,8 @@ object Main extends App {
 //    currentSinkDacCalibration = Some(device.Calibration(slope = -137.0626929f, intercept = 2048.703187f)),
   )
   println(s"Device info: ${smuDevice.getDeviceInfo().toProtoString}")
-  println(s"Read NV: ${smuDevice.getNvram().toProtoString}")
-  println(s"Update NV: ${smuDevice.updateNvram(updateNvramData)} (${updateNvramData.serializedSize} B)")
+//  println(s"Read NV: ${smuDevice.getNvram().toProtoString}")
+//  println(s"Update NV: ${smuDevice.updateNvram(updateNvramData)} (${updateNvramData.serializedSize} B)")
   val readNv = smuDevice.getNvram()
   println(s"Read NV (${readNv.serializedSize}): ${readNv.toProtoString}")
 
