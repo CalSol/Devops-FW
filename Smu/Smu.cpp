@@ -1,7 +1,7 @@
 #include <cstdio>
 
 #include "USBSerial.h"
-#include "USBHID.h"
+#include "UsbHidProto.h"
 
 #define DEBUG_ENABLED
 #include "debug.h"
@@ -52,10 +52,10 @@ DmaSerial<1024> swdConsole(P0_8, NC, 115200);  // TODO increase size when have m
 // Comms interfaces
 //
 // USBSerial UsbSerial(0x1209, 0x0001, 0x0001, false);
-class UsbHidSmu: public USBHID {
+class UsbHidSmu: public UsbHidProto<SmuResponse, SmuResponse_size + 1, SmuCommand, SmuCommand_size + 1> {
 public:
   UsbHidSmu(char* serial, uint8_t output_report_length = 64, uint8_t input_report_length = 64, bool connect = true):
-      USBHID(output_report_length, input_report_length, 0x1209, 0x0007, 0x0001, connect) {
+      UsbHidProto(SmuResponse_msg, SmuCommand_msg, output_report_length, input_report_length, 0x1209, 0x0007, 0x0001, connect) {
     // Serial descriptor seemingly must be provided on start
     size_t serialLength = strlen(serial);
     stringIserialDescriptor_[0] = 2 + 2*serialLength;  // bLength
@@ -77,8 +77,7 @@ public:
   }
 
   const uint8_t * stringIserialDesc() {
-    // effectively const
-    return (const uint8_t*)stringIserialDescriptor_;
+    return (const uint8_t*)stringIserialDescriptor_;  // effectively const
   }
 
   // USB HID overrides
@@ -380,87 +379,77 @@ int main() {
       default: break;
     }
 
-    HID_REPORT receivedHidReport;
-    if(UsbHid.configured() && UsbHid.readNB(&receivedHidReport)) {
+    SmuCommand command;
+    if (UsbHid.configured() && UsbHid.readProtoNb(&command)) {
       widUsb.fresh();
-      ProtoCoder<SmuCommand> command(SmuCommand_msg, true);
-      ProtoCoder<SmuResponse> response(SmuResponse_msg, true);
 
-      if (!command.decode_from(receivedHidReport.data, receivedHidReport.length)) {
-        debugWarn("HID command decode failed");
+      SmuResponse response;
+      response.which_response = SmuResponse_acknowledge_tag;
+
+      if (command.which_command == SmuCommand_getDeviceInfo_tag) {
+        response.which_response = SmuResponse_deviceInfo_tag;
+        const char* build = __DATE__ " " __TIME__;
+        if (strlen(build) < sizeof(response.response.deviceInfo.build)) {
+          strcpy(response.response.deviceInfo.build, build);
+        } else {
+          strcpy(response.response.deviceInfo.build, "OVERFLOW");
+        }
+        response.response.deviceInfo.voltageAdcBits = 12;
+        response.response.deviceInfo.currentAdcBits = 12;
+        response.response.deviceInfo.voltageDacBits = 12;
+        response.response.deviceInfo.currentSourceDacBits = 12;
+        response.response.deviceInfo.currentSinkDacBits = 12;
+      } else if (command.which_command == SmuCommand_readMeasurements_tag) {
+        response.which_response = SmuResponse_measurements_tag;
+        response.response.measurements.voltage = measMv;
+        response.response.measurements.current = measMa;
+      } else if (command.which_command == SmuCommand_readMeasurementsRaw_tag) {
+        response.which_response = SmuResponse_measurementsRaw_tag;
+        response.response.measurementsRaw.voltage = measVoltAdc;
+        response.response.measurementsRaw.current = measCurrentAdc;
+      } else if (command.which_command == SmuCommand_setControl_tag) {
+        voltageChanged = true;
+        targetV = command.command.setControl.voltage;
+        Smu.setVoltageMv(targetV);
+        targetISrc = command.command.setControl.currentSource;
+        Smu.setCurrentSourceMa(targetISrc);
+        targetISnk = command.command.setControl.currentSink;
+        Smu.setCurrentSinkMa(targetISnk);
+        if (command.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kEnabled) {
+          Smu.enableDriver();
+        } else if (!command.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kDisabled) {
+          Smu.disableDriver();
+        }
+      } else if (command.which_command == SmuCommand_setControlRaw_tag) {
+        voltageChanged = true;
+        targetV = Smu.dacToVoltage(command.command.setControl.voltage);
+        Smu.setVoltageDac(command.command.setControlRaw.voltage);
+        targetISrc = Smu.dacToCurrent(command.command.setControlRaw.currentSource);
+        Smu.setCurrentSourceDac(command.command.setControlRaw.currentSource);
+        targetISnk = Smu.dacToCurrent(command.command.setControlRaw.currentSink);
+        Smu.setCurrentSinkDac(command.command.setControlRaw.currentSink);
+        if (command.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kEnabled) {
+          Smu.enableDriver();
+        } else if (!command.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kDisabled) {
+          Smu.disableDriver();
+        }
+      } else if (command.which_command == SmuCommand_readNvram_tag) {
+        response.which_response = SmuResponse_readNvram_tag;
+        response.response.readNvram = NvConfig.pb;
+      } else if (command.which_command == SmuCommand_updateNvram_tag) {
+        NvConfig.update_from(command.command.updateNvram);
+        size_t nvWritten = NvConfig.writeToEeprom();
+        debugInfo("HID:updateNvram: wrote %i", nvWritten);
+      } else if (command.which_command == SmuCommand_setNvram_tag) {
+        NvConfig.pb = command.command.setNvram;
+        size_t nvWritten = NvConfig.writeToEeprom();
+        debugInfo("HID:setNvram: wrote %i", nvWritten);
       } else {
-        response.pb.which_response = SmuResponse_acknowledge_tag;
+        debugWarn("HID: unknown command %i", command.which_command);
+      }
 
-        if (command.pb.which_command == SmuCommand_getDeviceInfo_tag) {
-          response.pb.which_response = SmuResponse_deviceInfo_tag;
-          const char* build = __DATE__ " " __TIME__;
-          if (strlen(build) < sizeof(response.pb.response.deviceInfo.build)) {
-            strcpy(response.pb.response.deviceInfo.build, build);
-          } else {
-            strcpy(response.pb.response.deviceInfo.build, "OVERFLOW");
-          }
-          response.pb.response.deviceInfo.voltageAdcBits = 12;
-          response.pb.response.deviceInfo.currentAdcBits = 12;
-          response.pb.response.deviceInfo.voltageDacBits = 12;
-          response.pb.response.deviceInfo.currentSourceDacBits = 12;
-          response.pb.response.deviceInfo.currentSinkDacBits = 12;
-        } else if (command.pb.which_command == SmuCommand_readMeasurements_tag) {
-          response.pb.which_response = SmuResponse_measurements_tag;
-          response.pb.response.measurements.voltage = measMv;
-          response.pb.response.measurements.current = measMa;
-        } else if (command.pb.which_command == SmuCommand_readMeasurementsRaw_tag) {
-          response.pb.which_response = SmuResponse_measurementsRaw_tag;
-          response.pb.response.measurementsRaw.voltage = measVoltAdc;
-          response.pb.response.measurementsRaw.current = measCurrentAdc;
-        } else if (command.pb.which_command == SmuCommand_setControl_tag) {
-          voltageChanged = true;
-          targetV = command.pb.command.setControl.voltage;
-          Smu.setVoltageMv(targetV);
-          targetISrc = command.pb.command.setControl.currentSource;
-          Smu.setCurrentSourceMa(targetISrc);
-          targetISnk = command.pb.command.setControl.currentSink;
-          Smu.setCurrentSinkMa(targetISnk);
-          if (command.pb.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kEnabled) {
-            Smu.enableDriver();
-          } else if (!command.pb.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kDisabled) {
-            Smu.disableDriver();
-          }
-        } else if (command.pb.which_command == SmuCommand_setControlRaw_tag) {
-          voltageChanged = true;
-          targetV = Smu.dacToVoltage(command.pb.command.setControl.voltage);
-          Smu.setVoltageDac(command.pb.command.setControlRaw.voltage);
-          targetISrc = Smu.dacToCurrent(command.pb.command.setControlRaw.currentSource);
-          Smu.setCurrentSourceDac(command.pb.command.setControlRaw.currentSource);
-          targetISnk = Smu.dacToCurrent(command.pb.command.setControlRaw.currentSink);
-          Smu.setCurrentSinkDac(command.pb.command.setControlRaw.currentSink);
-          if (command.pb.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kEnabled) {
-            Smu.enableDriver();
-          } else if (!command.pb.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kDisabled) {
-            Smu.disableDriver();
-          }
-        } else if (command.pb.which_command == SmuCommand_readNvram_tag) {
-          response.pb.which_response = SmuResponse_readNvram_tag;
-          response.pb.response.readNvram = NvConfig.pb;
-        } else if (command.pb.which_command == SmuCommand_updateNvram_tag) {
-          NvConfig.update_from(command.pb.command.updateNvram);
-          size_t nvWritten = NvConfig.writeToEeprom();
-          debugInfo("HID:updateNvram: wrote %i", nvWritten);
-        } else if (command.pb.which_command == SmuCommand_setNvram_tag) {
-          NvConfig.pb = command.pb.command.setNvram;
-          size_t nvWritten = NvConfig.writeToEeprom();
-          debugInfo("HID:setNvram: wrote %i", nvWritten);
-        } else {
-          debugWarn("HID: unknown command %i", command.pb.which_command);
-        }
-
-        HID_REPORT sendHidReport;
-        sendHidReport.length = 64;  // must match HID report size
-        memset(sendHidReport.data, 0, sendHidReport.length);  // clear out the excess bytes
-        if (response.encode_to(sendHidReport.data, sendHidReport.length)) {
-          UsbHid.send(&sendHidReport);
-        } else {
-          debugWarn("HID response encode failed");
-        }
+      if (!UsbHid.sendProto(&response)) {
+        debugWarn("HID response send failed");
       }
     }
 

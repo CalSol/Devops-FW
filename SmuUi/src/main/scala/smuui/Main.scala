@@ -50,6 +50,9 @@ class SmuInterface(device: HidDevice) {
   // Reads a HID packet and decodes the proto
   protected def read(): Option[SmuResponse] = {
     val readData = device.read().map(_.toByte)
+    if (readData.isEmpty) {
+      println("Receive timed out")
+    }
     SmuResponse.parseDelimitedFrom(new ByteArrayInputStream(readData))
   }
 
