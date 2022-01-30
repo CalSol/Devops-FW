@@ -37,19 +37,20 @@ public:
     transmitSize_ = 0;
 
     HID_REPORT transmitReport;
-    transmitReport.length = min((size_t)outputReportLength_, transmitLength_);
-    memcpy(transmitReport.data, transmitBuffer_, transmitReport.length);
-    transmitSize_ += transmitReport.length;
+    transmitReport.length = outputReportLength_;
+    size_t reportDataLength = min((size_t)transmitReport.length, transmitLength_);
+    memcpy(transmitReport.data, transmitBuffer_, reportDataLength);
+    transmitSize_ += reportDataLength;
     if (!this->send(&transmitReport)) {
       return false;
     }
     
     while (transmitSize_ < transmitLength_) {
       // for each successive report, we need to prepend a zero
-      transmitReport.length = min((size_t)outputReportLength_, transmitLength_ - transmitSize_ + 1);
+      reportDataLength = min((size_t)transmitReport.length - 1, transmitLength_ - transmitSize_);
       transmitReport.data[0] = 0;
-      memcpy(transmitReport.data + 1, transmitBuffer_ + transmitSize_, transmitReport.length - 1);
-      transmitSize_ += transmitReport.length - 1;
+      memcpy(transmitReport.data + 1, transmitBuffer_ + transmitSize_, reportDataLength);
+      transmitSize_ += reportDataLength;
       if (!this->send(&transmitReport)) {
         return false;
       }
