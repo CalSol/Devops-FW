@@ -29,8 +29,8 @@
 #include "pb_common.h"
 #include "pb_encode.h"
 #include "pb_decode.h"
-#include "device.pb.h"
-#include "smu.pb.h"
+#include "smuconfig.pb.h"
+#include "smucomms.pb.h"
 
 #include "ProtoCoder.h"
 #include "EepromProto.h"
@@ -60,7 +60,7 @@ public:
     size_t serialLength = strlen(serial);
     stringIserialDescriptor_[0] = 2 + 2*serialLength;  // bLength
     stringIserialDescriptor_[1] = STRING_DESCRIPTOR;
-    for (size_t i=0; i<min(serialLength, sizeof(SmuDevice::serial)); i++) {
+    for (size_t i=0; i<min(serialLength, sizeof(SmuConfig::serial)); i++) {
       stringIserialDescriptor_[2 + 2*i] = serial[i];
       stringIserialDescriptor_[2 + 2*i + 1] = 0;
     }
@@ -91,7 +91,7 @@ public:
   }
 
 protected:
-  uint8_t stringIserialDescriptor_[2 + 2*sizeof(SmuDevice::serial)];
+  uint8_t stringIserialDescriptor_[2 + 2*sizeof(SmuConfig::serial)];
 };
 
 //
@@ -143,7 +143,7 @@ ButtonGesture SwitchCGesture(SwitchC);
 //
 // NVRAM
 //
-EepromProto<SmuDevice, SmuDevice_size + 1> NvConfig(SmuDevice_msg);
+EepromProto<SmuConfig, SmuConfig_size + 1> NvConfig(SmuConfig_msg);
 
 //
 // LCD and widgets

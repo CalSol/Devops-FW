@@ -2,7 +2,7 @@
 
 syntax = "proto3";
 import 'nanopb.proto';
-import 'device.proto';
+import 'smuconfig.proto';
 
 
 message Empty {
@@ -33,8 +33,8 @@ message SmuCommand {
     ControlRaw setControlRaw = 31;  // acknowledge response only
 
     Empty readNvram = 41;
-    SmuDevice updateNvram = 42;  // acknowledge response only
-    SmuDevice setNvram = 43;  // acknowledge response only
+    SmuConfig updateNvram = 42;  // acknowledge response only
+    SmuConfig setNvram = 43;  // acknowledge response only
   }
 }
 
@@ -67,6 +67,6 @@ message SmuResponse {
     Measurements measurements = 20;
     MeasurementsRaw measurementsRaw = 21;
 
-    SmuDevice readNvram = 41;
+    SmuConfig readNvram = 41;
   }
 }

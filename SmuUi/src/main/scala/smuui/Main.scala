@@ -6,8 +6,8 @@ import org.hid4java.{HidDevice, HidManager, HidServicesSpecification}
 
 import scala.jdk.CollectionConverters.CollectionHasAsScala
 import scalapb.{GeneratedMessage, GeneratedMessageCompanion}
-import smu.{SmuCommand, SmuResponse}
-import device.SmuDevice
+import smucomms.{SmuCommand, SmuResponse}
+import smuconfig.SmuConfig
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, File}
 import scala.io.StdIn.readLine
@@ -91,19 +91,19 @@ class SmuInterface(device: HidDevice) {
     response.get
   }
 
-  def getDeviceInfo(): smu.DeviceInfo = {
-    command(SmuCommand(SmuCommand.Command.GetDeviceInfo(smu.Empty()))).getDeviceInfo
+  def getDeviceInfo(): smucomms.DeviceInfo = {
+    command(SmuCommand(SmuCommand.Command.GetDeviceInfo(smucomms.Empty()))).getDeviceInfo
   }
 
-  def getNvram(): SmuDevice = {
-    command(SmuCommand(SmuCommand.Command.ReadNvram(smu.Empty()))).getReadNvram
+  def getNvram(): SmuConfig = {
+    command(SmuCommand(SmuCommand.Command.ReadNvram(smucomms.Empty()))).getReadNvram
   }
 
-  def updateNvram(nvram: SmuDevice): SmuResponse = {
+  def updateNvram(nvram: SmuConfig): SmuResponse = {
     command(SmuCommand(SmuCommand.Command.UpdateNvram(value=nvram)))
   }
 
-  def setNvram(nvram: SmuDevice): SmuResponse = {
+  def setNvram(nvram: SmuConfig): SmuResponse = {
     command(SmuCommand(SmuCommand.Command.SetNvram(value=nvram)))
   }
 }
@@ -130,7 +130,7 @@ object Main extends App {
   val smuDevice = new SmuInterface(smuDevices.head)
   println(s"Device opened: $smuDevice")
 
-  val updateNvramData = SmuDevice(
+  val updateNvramData = SmuConfig(
 //    serial = "1-02",
 //    voltageAdcCalibration = Some(device.Calibration(slope = 62.1251086354339f, intercept = 2034.62983939408f)),
 //    voltageDacCalibration = Some(device.Calibration(slope = -62.5880492671842f, intercept = 2042.21008013648f)),
@@ -200,8 +200,8 @@ object Main extends App {
 
   for (dacValue <- calDacSequence) {
     var measured: String = ""
-    var smuMeasured: Option[smu.MeasurementsRaw] = None
-    val control = smu.ControlRaw(
+    var smuMeasured: Option[smucomms.MeasurementsRaw] = None
+    val control = smucomms.ControlRaw(
       // For voltage calibration
 //      voltage = dacValue,
 //      currentSource = currentToDac(0.25).toInt, currentSink = currentToDac(-0.25).toInt,
@@ -224,7 +224,7 @@ object Main extends App {
     while (measured.isEmpty || smuMeasured.isEmpty) {  // allow user to re-send the command
       smuDevice.command(SmuCommand(SmuCommand.Command.SetControlRaw(control)))
       Thread.sleep(250)
-      val response = smuDevice.command(SmuCommand(SmuCommand.Command.ReadMeasurementsRaw(smu.Empty())))
+      val response = smuDevice.command(SmuCommand(SmuCommand.Command.ReadMeasurementsRaw(smucomms.Empty())))
       smuMeasured = response.response.measurementsRaw
       if (smuMeasured.isDefined) {
         println(s"DAC=$dacValue, meas=${smuMeasured.get}, enter measured:")
