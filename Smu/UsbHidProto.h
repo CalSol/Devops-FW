@@ -68,8 +68,9 @@ public:
         }
 
         // discard the zero from the buffer
-        memcpy(receiveBuffer_ + receiveSize_, receivedReport.data + 1, receivedReport.length - 1);
-        receiveSize_ += receivedReport.length - 1;
+        size_t reportDataLength = min((size_t)receivedReport.length - 1, receiveLength_ - receiveSize_);
+        memcpy(receiveBuffer_ + receiveSize_, receivedReport.data + 1, reportDataLength);
+        receiveSize_ += reportDataLength;
       } else {  // new report
         receiveLength_ = 0;  // even if another message was in progress, discard it
         receiveSize_ = 0;
@@ -79,13 +80,15 @@ public:
           return false;  // if decode failed for whatever reason, discard
         }
         size_t lengthSize = receivedReport.length - stream.bytes_left;
-        receiveLength_ = lengthSize + protoSize;
-
-        // include the size in the buffer, since the proto decoder depends on it
-        memcpy(receiveBuffer_ + receiveSize_, receivedReport.data, receivedReport.length);
-        receiveSize_ += receivedReport.length;
+        if (protoSize <= sizeof(receiveBuffer_)) {  // discard in case of overrun
+          receiveLength_ = lengthSize + protoSize;
+          // include the size in the buffer, since the proto decoder depends on it
+          size_t reportDataLength = min((size_t)receivedReport.length, receiveLength_);
+          memcpy(receiveBuffer_, receivedReport.data, reportDataLength);
+          receiveSize_ += reportDataLength;
+        }
       }
-      if (receiveSize_ >= receiveLength_) {  // enough bytes received, try decoding
+      if (receiveLength_ > 0 && receiveSize_ >= receiveLength_) {  // enough bytes received, try decoding
         // note received size can be over since reports may be fixed size
         pb_istream_t stream = pb_istream_from_buffer(receiveBuffer_, sizeof(receiveBuffer_));
         bool success = pb_decode_ex(&stream, &receiveFields_, pb, PB_DECODE_DELIMITED);
@@ -106,10 +109,12 @@ protected:
   const pb_msgdesc_t &receiveFields_;
 
   size_t transmitLength_ = 0;  // total length of the transmit buffer, zero for none being transmitted
+                               // this should never > TransmitSize
   size_t transmitSize_ = 0;  // index of the next untransmitted byte in the transmit buffer
   uint8_t transmitBuffer_[TransmitSize];  // proto transmit buffer
 
   size_t receiveLength_ = 0;  // total length of the message being assembled, zero for none being assembled
+                              // this should never > ReceiveSize
   size_t receiveSize_ = 0;  // index of the next free byte in the assembly buffer
   uint8_t receiveBuffer_[ReceiveSize];  // proto assembly buffer, for multi-report protos
 };
