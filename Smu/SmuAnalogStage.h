@@ -18,53 +18,74 @@ public:
     enableSink_ = 0;
   }
 
-  int32_t readVoltageMv() {
+  // Reads the voltage ADC, returning millivolts (and optionally also the raw ADC counts)
+  int32_t readVoltageMv(uint16_t* rawAdcOut = NULL) {
     sharedSpi_.frequency(100000);  // TODO refactor into Mcp* classes
-    uint16_t adc = adcVolt_.read_u16();
-    return ((int64_t)adc - kAdcCenter) * kVrefMv * kVoltRatio / 1000 / 65535;  // in mV
+    uint16_t adcValue = adcVolt_.read_raw_u12();
+    if (rawAdcOut != NULL) {
+      *rawAdcOut = adcValue;
+    }
+    return (adcValue - voltageAdcIntercept_) * kCalibrationDenominator * 1000 / voltageAdcSlope_;
   }
-  int32_t readCurrentMa() {
+
+  // Reads the current ADC, returning millivolts (and optionally also the raw ADC counts)
+  int32_t readCurrentMa(uint16_t* rawAdcOut = NULL) {
     sharedSpi_.frequency(100000);
-    uint16_t adc = adcCurr_.read_u16();
-    return ((int64_t)adc - kAdcCenter) * kVrefMv * kAmpRatio / 1000 / 65535;  // in mA
+    uint16_t adcValue = adcCurr_.read_raw_u12();
+    if (rawAdcOut != NULL) {
+      *rawAdcOut = adcValue;
+    }
+    return (adcValue - currentAdcIntercept_) * kCalibrationDenominator * 1000 / currentAdcSlope_;
   }
 
   void setVoltageMv(int32_t setVoltage) {
-    targetVoltage_ = setVoltage;
-
-    if (state_ == kEnabled) {  // only write DAC immediately if enabled
-      writeVoltageMv(targetVoltage_);
-    }
-  }
-
-  void setCurrentSinkMa(int32_t setCurrentSink) {
-    targetCurrentSink_ = setCurrentSink;
-
-    if (state_ == kEnabled) {  // only write DAC immediately if enabled
-      writeCurrentSinkMa(targetCurrentSink_);
-    }
+    setVoltageDac(voltageToDac(setVoltage));
   }
 
   void setCurrentSourceMa(int32_t setCurrentSource) {
-    targetCurrentSource_ = setCurrentSource;
+    setCurrentSourceDac(currentToDac(setCurrentSource));
+  }
+
+  void setCurrentSinkMa(int32_t setCurrentSink) {
+    setCurrentSinkDac(currentToDac(setCurrentSink));
+  }
+
+  void setVoltageDac(uint16_t dacValue) {
+    targetVoltageDac_ = dacValue;
 
     if (state_ == kEnabled) {  // only write DAC immediately if enabled
-      writeCurrentSourceMa(targetCurrentSource_);
+      writeVoltage(targetVoltageDac_);
+    }
+  }
+
+  void setCurrentSourceDac(uint16_t dacValue) {
+    targetCurrentSourceDac_ = dacValue;
+
+    if (state_ == kEnabled) {  // only write DAC immediately if enabled
+      writeCurrentSource(targetCurrentSourceDac_);
+    }
+  }
+
+  void setCurrentSinkDac(uint16_t dacValue) {
+    targetCurrentSinkDac_ = dacValue;
+
+    if (state_ == kEnabled) {  // only write DAC immediately if enabled
+      writeCurrentSink(targetCurrentSinkDac_);
     }
   }
 
   void enableDriver() {
     enableSource_ = 0;
     enableSink_ = 0;
-    if (targetVoltage_ >= readVoltageMv()) {  // likely will be sourcing current
+    if (dacToVoltage(targetVoltageDac_) >= readVoltageMv()) {  // likely will be sourcing current
       dacVolt_.write_u16(65535);  // command lowest voltage
       startSourceDriver_ = true;
     } else {  // likely will be sinking current
       dacVolt_.write_u16(0);  // command highest voltage
       startSourceDriver_ = false;
     }
-    writeCurrentSourceMa(targetCurrentSource_);  // also does LDAC
-    writeCurrentSinkMa(targetCurrentSink_);
+    writeCurrentSource(targetCurrentSourceDac_);  // also does LDAC
+    writeCurrentSink(targetCurrentSinkDac_);
     timer_.reset();
     state_ = kResetIntegrator;
   }
@@ -82,16 +103,17 @@ public:
         enableSink_ = 0;
         break;
       case SmuState::kResetIntegrator:
-        enableSource_ = 0;
-        enableSink_ = 0;
         if (timer_.read_ms() >= kIntegratorResetTimeMs) {
-          writeVoltageMv(targetVoltage_);
+          writeVoltage(targetVoltageDac_);
           if (startSourceDriver_) {
             enableSource_ = 1;
+            enableSink_ = 0;
           } else {
+            enableSource_ = 0;
             enableSink_ = 1;
           }
           state_ = SmuState::kSingleEnable;
+          timer_.reset();
         }
         break;
       case SmuState::kSingleEnable:
@@ -119,38 +141,93 @@ public:
     return state_;
   }
 
+
+  // "Advanced API" that is one level of abstraction lower
+  // but allows raw DAC/ADC counts for example for calibration
+  uint16_t voltageToDac(int32_t voltageMv) {
+    return (int64_t)voltageMv * voltageDacSlope_ / kCalibrationDenominator / 1000 + voltageDacIntercept_;
+  }
+  int32_t dacToVoltage(int32_t dacValue) {
+    return (int64_t)(dacValue - voltageDacIntercept_) * kCalibrationDenominator * 1000 / voltageDacSlope_;
+  }
+
+  uint16_t currentToDac(int32_t currentMa) {
+    return (int64_t)currentMa * currentDacSlope_ / kCalibrationDenominator / 1000 + currentDacIntercept_;
+  }
+  int32_t dacToCurrent(int32_t dacValue) {
+    return (int64_t)(dacValue - currentDacIntercept_) * kCalibrationDenominator * 1000 / currentDacSlope_;
+  }
+
+  // Slope and intercept are adcBits = volts * slope + intercept
+  void setVoltageAdcCalibration(float slope, float intercept) {
+    voltageAdcSlope_ = slope * 1000;
+    voltageAdcIntercept_ = intercept;
+  }
+  void setCurrentAdcCalibration(float slope, float intercept) {
+    currentAdcSlope_ = slope * 1000;
+    currentAdcIntercept_ = intercept;
+  }
+
+  void setVoltageDacCalibration(float slope, float intercept) {
+    voltageDacSlope_ = slope * 1000;
+    voltageDacIntercept_ = intercept;
+  }
+  void setCurrentDacCalibration(float slope, float intercept) {
+    currentDacSlope_ = slope * 1000;
+    currentDacIntercept_ = intercept;
+  }
+
 protected:
-  void writeVoltageMv(int32_t setVoltage) {
+  void writeVoltage(uint16_t dacValue) {
     sharedSpi_.frequency(1000000);
-    int32_t setVOffset = (int64_t)setVoltage * 65535 * 1000 / kVoltRatio / kVrefMv;
-    uint16_t dac = kDacCenter - setVOffset;
-    dacVolt_.write_u16(dac);
+    dacVolt_.write_raw_u12(dacValue);
     dacLdac_ = 1;
     wait_us(1);
     dacLdac_ = 0;
   }
 
-  void writeCurrentSinkMa(int32_t setCurrentSink) {
+  void writeCurrentSource(uint16_t dacValue) {
     sharedSpi_.frequency(1000000);
-    int32_t setISnkOffset = (int64_t)setCurrentSink * 65535 * 1000 / kAmpRatio / kVrefMv;
-    uint16_t dac = kDacCenter - setISnkOffset;
-    dacCurrNeg_.write_u16(dac);
+    dacCurrPos_.write_raw_u12(dacValue);
     dacLdac_ = 1;
     wait_us(1);
     dacLdac_ = 0;
   }
 
-  void writeCurrentSourceMa(int32_t setCurrentSource) {
+  void writeCurrentSink(uint16_t dacValue) {
     sharedSpi_.frequency(1000000);
-    int32_t setISrcOffset = (int64_t)setCurrentSource * 65535 * 1000 / kAmpRatio / kVrefMv;
-    uint16_t dac = kDacCenter - setISrcOffset;
-    dacCurrPos_.write_u16(dac);
+    dacCurrNeg_.write_raw_u12(dacValue);
     dacLdac_ = 1;
     wait_us(1);
     dacLdac_ = 0;
   }
 
-  int32_t targetVoltage_ = 0, targetCurrentSink_ = -100, targetCurrentSource_ = 100;
+  static const uint16_t kAdcCounts = 4095;
+  static const uint16_t kDacCounts = 4095;
+
+  // These are nominal (default, uncalibrated) parameters
+  static const int32_t kVoltRatio = 22148;  // 1000x, actually ~22.148 Vout / Vmeas
+  static const int32_t kAmpRatio = 10000;  // 1000x, actually 10 Aout / Vmeas
+  static const int32_t kVrefMv = 3000;  // Vref voltage
+
+  static const int32_t kCalibrationDenominator = 1000;
+  int32_t voltageAdcSlope_ = (int64_t)kCalibrationDenominator * kAdcCounts * 1000 / kVrefMv * 1000 / kVoltRatio;
+  int32_t voltageAdcIntercept_ = 4095 / 2;
+
+  int32_t voltageDacSlope_ = -voltageAdcSlope_;
+  int32_t voltageDacIntercept_ = voltageAdcIntercept_;
+
+  int32_t currentAdcSlope_ = (int64_t)kCalibrationDenominator * kDacCounts * 1000 / kVrefMv * 1000 / kAmpRatio;
+  int32_t currentAdcIntercept_ = 4095 / 2;
+
+  int32_t currentDacSlope_ = -currentAdcSlope_;
+  int32_t currentDacIntercept_ = currentAdcIntercept_;
+
+
+  static const uint16_t kIntegratorResetTimeMs = 10;  // time to reset the integrator
+
+  uint16_t targetVoltageDac_ = voltageToDac(0);
+  uint16_t targetCurrentSourceDac_ = currentToDac(100), targetCurrentSinkDac_ = currentToDac(-100);
 
   SPI &sharedSpi_;
 
@@ -164,16 +241,6 @@ protected:
   SmuState state_;
   bool startSourceDriver_;  // first driver to be enabled is source
   Timer timer_;
-
-  // TODO also needs a linear calibration constant?
-  static const int32_t kVoltRatio = 22148;  // 1000x, actually ~22.148 Vout / Vmeas
-  static const int32_t kAmpRatio = 10000;  // 1000x, actually 10 Aout / Vmeas
-  static const int32_t kVrefMv = 3000;  // Vref voltage
-
-  static const uint16_t kAdcCenter = 2042 * 65535 / 4095;  // Measured center value of the ADC
-  static const uint16_t kDacCenter = 2048 * 65535 / 4095;  // Empirically derived center value of the DAC
-
-  static const uint16_t kIntegratorResetTimeMs = 10;  // time to reset the integrator
 };
 
 #endif  // __SMU_ANALOG_STAGE_H__

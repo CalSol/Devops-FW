@@ -1,11 +1,12 @@
 #include <cstdio>
 
 #include "USBSerial.h"
-#include "USBHID.h"
+#include "UsbHidProto.h"
 
 #define DEBUG_ENABLED
 #include "debug.h"
 
+#include "EEPROM.h"
 #include "WDT.h"
 
 #include "RgbActivityLed.h"
@@ -25,6 +26,16 @@
 #include "DefaultFonts.h"
 #include "Widget.h"
 
+#include "pb_common.h"
+#include "pb_encode.h"
+#include "pb_decode.h"
+#include "smuconfig.pb.h"
+#include "smucomms.pb.h"
+
+#include "ProtoCoder.h"
+#include "EepromProto.h"
+
+
 /*
  * Local peripheral definitions
  */
@@ -41,44 +52,47 @@ DmaSerial<1024> swdConsole(P0_8, NC, 115200);  // TODO increase size when have m
 // Comms interfaces
 //
 // USBSerial UsbSerial(0x1209, 0x0001, 0x0001, false);
-class UsbHidSmu: public USBHID {
+class UsbHidSmu: public UsbHidProto<SmuResponse, SmuResponse_size + 1, SmuCommand, SmuCommand_size + 1> {
 public:
-  UsbHidSmu(uint8_t output_report_length = 64, uint8_t input_report_length = 64, bool connect = true):
-      USBHID(output_report_length, input_report_length, 0x1209, 0x0007, 0x0001, connect) {
+  UsbHidSmu(char* serial, uint8_t output_report_length = 64, uint8_t input_report_length = 64, bool connect = true):
+      UsbHidProto(SmuResponse_msg, SmuCommand_msg, output_report_length, input_report_length, 0x1209, 0x0007, 0x0001, connect) {
+    // Serial descriptor seemingly must be provided on start
+    size_t serialLength = strlen(serial);
+    stringIserialDescriptor_[0] = 2 + 2*serialLength;  // bLength
+    stringIserialDescriptor_[1] = STRING_DESCRIPTOR;
+    for (size_t i=0; i<min(serialLength, sizeof(SmuConfig::serial)); i++) {
+      stringIserialDescriptor_[2 + 2*i] = serial[i];
+      stringIserialDescriptor_[2 + 2*i + 1] = 0;
+    }
   }
 
   // USB Device oerrides
-const uint8_t * stringImanufacturerDesc() {
+  const uint8_t * stringImanufacturerDesc() {
     static const uint8_t stringImanufacturerDescriptor[] = {
-        2 + 5*2,  // bLength
-        STRING_DESCRIPTOR,
-        'D',0,'u',0,'c',0,'k',0,'y',0
+      2 + 5*2,  // bLength
+      STRING_DESCRIPTOR,
+      'D',0,'u',0,'c',0,'k',0,'y',0
     };
     return stringImanufacturerDescriptor;
-}
+  }
 
-const uint8_t * stringIserialDesc() {
-    static const uint8_t stringIserialDescriptor[] = {
-        2 + 2*2,  // bLength
-        STRING_DESCRIPTOR,
-        '0',0,'1',0
-    };
-    return stringIserialDescriptor;
-}
+  const uint8_t * stringIserialDesc() {
+    return (const uint8_t*)stringIserialDescriptor_;  // effectively const
+  }
 
-// USB HID overrides
-const uint8_t * stringIproductDesc() {
+  // USB HID overrides
+  const uint8_t * stringIproductDesc() {
     static const uint8_t stringIproductDescriptor[] = {
-        2 + 10*2,  // bLength
-        STRING_DESCRIPTOR,
-        'U',0,'S',0,'B',0,' ',0,'P',0,'D',0,' ',0,'S',0,'M',0,'U',0 //bString iProduct - HID device
+      2 + 10*2,  // bLength
+      STRING_DESCRIPTOR,
+      'U',0,'S',0,'B',0,' ',0,'P',0,'D',0,' ',0,'S',0,'M',0,'U',0 // bString iProduct - HID device
     };
     return stringIproductDescriptor;
-}
+  }
 
 protected:
+  uint8_t stringIserialDescriptor_[2 + 2*sizeof(SmuConfig::serial)];
 };
-UsbHidSmu UsbHid(64, 64, false);
 
 //
 // System
@@ -127,6 +141,11 @@ DigitalIn SwitchC(P0_26, PinMode::PullUp);
 ButtonGesture SwitchCGesture(SwitchC);
 
 //
+// NVRAM
+//
+EepromProto<SmuConfig, SmuConfig_size + 1> NvConfig(SmuConfig_msg);
+
+//
 // LCD and widgets
 //
 St7735sGraphics<160, 80, 1, 26> Lcd(SharedSpi, LcdCs, LcdRs, LcdReset);
@@ -143,6 +162,7 @@ TextWidget widBuildData("  " __DATE__, 0, Font5x7, kContrastBackground);
 Widget* widVersionContents[] = {&widVersionData, &widBuildData};
 HGridWidget<2> widVersionGrid(widVersionContents);
 
+TextWidget widSerial("", 0, Font5x7, kContrastBackground);
 
 TextWidget widEnable("     ", 0, Font5x7, kContrastStale);
 LabelFrameWidget widEnableFrame(&widEnable, "ENABLE", Font3x5, kContrastBackground);
@@ -157,7 +177,7 @@ Widget* widMeasContents[] = {&widEnableFrame, &widMeasVFrame, &widMeasIFrame};
 HGridWidget<3> widMeas(widMeasContents);
 
 
-TextWidget widUsb("     ", 0, Font5x7, kContrastStale);
+StaleTextWidget widUsb("     ", 5, 150*1000, Font5x7, kContrastActive, kContrastStale);
 LabelFrameWidget widUsbFrame(&widUsb, "USB", Font3x5, kContrastBackground);
 
 StaleNumericTextWidget widSetV(0, 2, 100 * 1000, Font5x7, kContrastActive, kContrastStale, Font3x5, 1000, 2);
@@ -212,8 +232,8 @@ Widget* widPdContents[] = {
 HGridWidget<9> widPdGrid(widPdContents);
 LabelFrameWidget pdStatusFrame(&widPdGrid, "USB PD", Font3x5, kContrastBackground);
 
-Widget* widMainContents[] = {&widVersionGrid, &widMeas, &widSet, &pdStatusFrame};
-VGridWidget<4> widMain(widMainContents);
+Widget* widMainContents[] = {&widVersionGrid, &widSerial, &widMeas, &widSet, &pdStatusFrame};
+VGridWidget<5> widMain(widMainContents);
 
 
 int main() {
@@ -226,6 +246,44 @@ int main() {
     debugWarn("WDT Reset");
   }
 
+  //
+  // Read NV config
+  //
+  size_t nvRead = NvConfig.readFromEeeprom();
+  if (nvRead > 0) {
+    debugInfo("NV read: %i bytes", nvRead);
+    widSerial.setValue(NvConfig.pb.serial);
+  } else {
+    debugWarn("NV read failed");
+  }
+
+  UsbHidSmu UsbHid(NvConfig.pb.serial, 64, 64, false);
+
+  if (NvConfig.pb.has_voltageAdcCalibration) {
+    debugInfo("Load V ADC calibration");
+    Smu.setVoltageAdcCalibration(NvConfig.pb.voltageAdcCalibration.slope, NvConfig.pb.voltageAdcCalibration.intercept);
+  }
+  if (NvConfig.pb.has_currentAdcCalibration) {
+    debugInfo("Load I ADC calibration");
+    Smu.setCurrentAdcCalibration(NvConfig.pb.currentAdcCalibration.slope, NvConfig.pb.currentAdcCalibration.intercept);
+  }
+  if (NvConfig.pb.has_voltageDacCalibration) {
+    debugInfo("Load V DAC calibration");
+    Smu.setVoltageDacCalibration(NvConfig.pb.voltageDacCalibration.slope, NvConfig.pb.voltageDacCalibration.intercept);
+  }
+  if (NvConfig.pb.has_currentSourceDacCalibration) {
+    debugInfo("Load ISrc DAC calibration");
+    Smu.setCurrentDacCalibration(NvConfig.pb.currentSourceDacCalibration.slope, NvConfig.pb.currentSourceDacCalibration.intercept);
+  }
+  if (NvConfig.pb.has_currentSinkDacCalibration) {
+    debugInfo("Load ISnk DAC calibration");
+    // TODO needs SmuAnalog::setCurrentSinkDacCalibration - if thats even useful
+    Smu.setCurrentDacCalibration(NvConfig.pb.currentSinkDacCalibration.slope, NvConfig.pb.currentSinkDacCalibration.intercept);
+  }
+
+  //
+  // System init
+  //
   UsTimer.start();
 
   Lcd.init();
@@ -240,15 +298,16 @@ int main() {
   uint8_t selected = 0;
 
   int32_t measMv = 0, measMa = 0;  // needed for the current limiting indicator
+  uint16_t measVoltAdc = 0, measCurrentAdc = 0;
   
   while (1) {
     if (MeasureTicker.checkExpired()) {  // limit the ADC read frequency to avoid impedance issues
       SharedSpi.frequency(100000);
     
-      measMv = Smu.readVoltageMv();
+      measMv = Smu.readVoltageMv(&measVoltAdc);
       widMeasV.setValue(measMv);
 
-      measMa = Smu.readCurrentMa();
+      measMa = Smu.readCurrentMa(&measCurrentAdc);
       widMeasI.setValue(measMa);  
     }
 
@@ -306,18 +365,6 @@ int main() {
       default: break;
     }
 
-    if (voltageChanged) {
-      UsbPd::Capability::Unpacked pdCapabilities[8];
-      uint8_t numCapabilities = UsbPdFsm.getCapabilities(pdCapabilities);
-      uint8_t currentCapability = UsbPdFsm.currentCapability();  // note, 1-indexed!
-      if (currentCapability > 1 && pdCapabilities[currentCapability - 2].voltageMv >= targetV + 1500) {
-        UsbPdFsm.requestCapability(currentCapability - 1, pdCapabilities[currentCapability - 2].maxCurrentMa);
-      } else if (currentCapability < numCapabilities && 
-          pdCapabilities[currentCapability - 1].voltageMv < targetV + 1500) {
-        UsbPdFsm.requestCapability(currentCapability + 1, pdCapabilities[currentCapability].maxCurrentMa);
-      }
-    }
-
     switch (SwitchCGesture.update()) {
       case ButtonGesture::Gesture::kClickRelease:
         selected = (selected + 1) % 3;
@@ -332,9 +379,90 @@ int main() {
       default: break;
     }
 
-    HID_REPORT hidRecv;
-    if(UsbHid.configured() && UsbHid.readNB(&hidRecv)) {
-      debugInfo("Received HID: %li", hidRecv.length);
+    SmuCommand command;
+    if (UsbHid.configured() && UsbHid.readProtoNb(&command)) {
+      widUsb.fresh();
+
+      SmuResponse response;
+      response.which_response = SmuResponse_acknowledge_tag;
+
+      if (command.which_command == SmuCommand_getDeviceInfo_tag) {
+        response.which_response = SmuResponse_deviceInfo_tag;
+        const char* build = __DATE__ " " __TIME__;
+        if (strlen(build) < sizeof(response.response.deviceInfo.build)) {
+          strcpy(response.response.deviceInfo.build, build);
+        } else {
+          strcpy(response.response.deviceInfo.build, "OVERFLOW");
+        }
+        response.response.deviceInfo.voltageAdcBits = 12;
+        response.response.deviceInfo.currentAdcBits = 12;
+        response.response.deviceInfo.voltageDacBits = 12;
+        response.response.deviceInfo.currentSourceDacBits = 12;
+        response.response.deviceInfo.currentSinkDacBits = 12;
+      } else if (command.which_command == SmuCommand_readMeasurements_tag) {
+        response.which_response = SmuResponse_measurements_tag;
+        response.response.measurements.voltage = measMv;
+        response.response.measurements.current = measMa;
+      } else if (command.which_command == SmuCommand_readMeasurementsRaw_tag) {
+        response.which_response = SmuResponse_measurementsRaw_tag;
+        response.response.measurementsRaw.voltage = measVoltAdc;
+        response.response.measurementsRaw.current = measCurrentAdc;
+      } else if (command.which_command == SmuCommand_setControl_tag) {
+        voltageChanged = true;
+        targetV = command.command.setControl.voltage;
+        Smu.setVoltageMv(targetV);
+        targetISrc = command.command.setControl.currentSource;
+        Smu.setCurrentSourceMa(targetISrc);
+        targetISnk = command.command.setControl.currentSink;
+        Smu.setCurrentSinkMa(targetISnk);
+        if (command.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kEnabled) {
+          Smu.enableDriver();
+        } else if (!command.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kDisabled) {
+          Smu.disableDriver();
+        }
+      } else if (command.which_command == SmuCommand_setControlRaw_tag) {
+        voltageChanged = true;
+        targetV = Smu.dacToVoltage(command.command.setControl.voltage);
+        Smu.setVoltageDac(command.command.setControlRaw.voltage);
+        targetISrc = Smu.dacToCurrent(command.command.setControlRaw.currentSource);
+        Smu.setCurrentSourceDac(command.command.setControlRaw.currentSource);
+        targetISnk = Smu.dacToCurrent(command.command.setControlRaw.currentSink);
+        Smu.setCurrentSinkDac(command.command.setControlRaw.currentSink);
+        if (command.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kEnabled) {
+          Smu.enableDriver();
+        } else if (!command.command.setControl.enable && Smu.getState() != SmuAnalogStage::SmuState::kDisabled) {
+          Smu.disableDriver();
+        }
+      } else if (command.which_command == SmuCommand_readNvram_tag) {
+        response.which_response = SmuResponse_readNvram_tag;
+        response.response.readNvram = NvConfig.pb;
+      } else if (command.which_command == SmuCommand_updateNvram_tag) {
+        NvConfig.update_from(command.command.updateNvram);
+        size_t nvWritten = NvConfig.writeToEeprom();
+        debugInfo("HID:updateNvram: wrote %i", nvWritten);
+      } else if (command.which_command == SmuCommand_setNvram_tag) {
+        NvConfig.pb = command.command.setNvram;
+        size_t nvWritten = NvConfig.writeToEeprom();
+        debugInfo("HID:setNvram: wrote %i", nvWritten);
+      } else {
+        debugWarn("HID: unknown command %i", command.which_command);
+      }
+
+      if (!UsbHid.sendProto(&response)) {
+        debugWarn("HID response send failed");
+      }
+    }
+
+    if (voltageChanged) {
+      UsbPd::Capability::Unpacked pdCapabilities[8];
+      uint8_t numCapabilities = UsbPdFsm.getCapabilities(pdCapabilities);
+      uint8_t currentCapability = UsbPdFsm.currentCapability();  // note, 1-indexed!
+      if (currentCapability > 1 && pdCapabilities[currentCapability - 2].voltageMv >= targetV + 1500) {
+        UsbPdFsm.requestCapability(currentCapability - 1, pdCapabilities[currentCapability - 2].maxCurrentMa);
+      } else if (currentCapability < numCapabilities && 
+          (currentCapability == 0 || pdCapabilities[currentCapability - 1].voltageMv < targetV + 1500)) {
+        UsbPdFsm.requestCapability(currentCapability + 1, pdCapabilities[currentCapability].maxCurrentMa);
+      }
     }
 
     widSetV.setValue(targetV);
@@ -360,7 +488,6 @@ int main() {
     }
 
     if (Smu.getState() == SmuAnalogStage::SmuState::kEnabled) {
-      EnableHigh = 1;
       widEnable.setValue(" ENA ");
       widEnable.setContrast(kContrastActive);
 
@@ -375,10 +502,8 @@ int main() {
       }
       if (LedStatusTicker.checkExpired()) {
         StatusLed.pulse(RgbActivity::kOff);
-      }  
+      }
     } else {
-      EnableHigh = 0;
-      EnableLow = 0;
       widEnable.setValue(" DIS ");
       widEnable.setContrast(kContrastStale);
 
@@ -389,11 +514,9 @@ int main() {
     }
 
     if (UsbHid.configured()) {
-      widUsb.setValue(" HID ");
-      widUsb.setContrast(kContrastActive);
+      widUsb.setValueStale(" HID ");
     } else {
-      widUsb.setValue(" DIS ");
-      widUsb.setContrast(kContrastStale);
+      widUsb.setValueStale(" DIS ");
       UsbHid.connect(false);
     }
 

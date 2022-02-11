@@ -1,0 +1,72 @@
+// SMU communication (PC to device) prrotocol
+
+syntax = "proto3";
+import 'nanopb.proto';
+import 'smuconfig.proto';
+
+
+message Empty {
+}
+
+message Control {
+  int32 voltage = 1;  // setpoint, in mV
+  int32 currentSource = 2;  // setpoint, in mA
+  int32 currentSink = 3;  // setpoint, in mA
+  bool enable = 4;
+}
+
+message ControlRaw {
+  uint32 voltage = 1;  // setpoint, raw DAC counts
+  uint32 currentSource = 2;  // setpoint, in raw DAC counts
+  uint32 currentSink = 3;  // setpoint, in raw DAC counts
+  bool enable = 4;
+}
+
+// Message sent by the PC to the SMU
+// These should all be idempotent
+message SmuCommand {
+  oneof command {
+    Empty getDeviceInfo = 10;
+    Empty readMeasurements = 20;
+    Empty readMeasurementsRaw = 21;
+    Control setControl = 23;  // acknowledge response only
+    ControlRaw setControlRaw = 31;  // acknowledge response only
+
+    Empty readNvram = 41;
+    SmuConfig updateNvram = 42;  // acknowledge response only
+    SmuConfig setNvram = 43;  // acknowledge response only
+  }
+}
+
+
+message DeviceInfo {
+  string build = 1 [(nanopb).max_size = 32];
+  uint32 voltageAdcBits = 10;
+  uint32 currentAdcBits = 11;
+  uint32 voltageDacBits = 20;
+  uint32 currentSourceDacBits = 21;
+  uint32 currentSinkDacBits = 22;
+}
+
+message Measurements {
+  int32 voltage = 1;  // in mV
+  int32 current = 2;  // in mA
+}
+
+message MeasurementsRaw {
+  uint32 voltage = 1;  // in raw ADC counts
+  uint32 current = 2;  // in raw ADC counts
+}
+
+// Message returned from the SMU to the PC in response to a SmuCommand
+message SmuResponse {
+  oneof response {
+    Empty acknowledge = 1;
+
+    DeviceInfo deviceInfo = 10;
+    Measurements measurements = 20;
+    MeasurementsRaw measurementsRaw = 21;
+
+    SmuConfig readNvram = 41;
+  }
+}
