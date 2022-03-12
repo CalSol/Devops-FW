@@ -330,7 +330,6 @@ int UsbPdStateMachine::processRxMessages() {
 
     uint16_t header = UsbPd::unpackUint16(rxData + 0);
     uint8_t messageType = UsbPd::MessageHeader::unpackMessageType(header);
-    uint8_t messageId = UsbPd::MessageHeader::unpackMessageId(header);
     uint8_t messageNumDataObjects = UsbPd::MessageHeader::unpackNumDataObjects(header);
     if (messageNumDataObjects > 0) {  // data message
       debugInfo("processRxMessages(): data message: id=%i, type=%03x, numData=%i", 
