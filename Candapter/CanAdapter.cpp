@@ -21,7 +21,7 @@
 /*
  * Local peripheral definitions
  */
-const uint32_t CAN_FREQUENCY = 1000000;
+const uint32_t CAN_FREQUENCY = 500000;
 
 /*
  * Local peripheral definitions
@@ -81,17 +81,27 @@ TextWidget widBuildData("  " __DATE__, 0, Font5x7, kContrastBackground);
 Widget* widVersionContents[] = {&widVersionData, &widBuildData};
 HGridWidget<2> widVersionGrid(widVersionContents);
 
+TextWidget widCanMode("NORMAL", 6, Font5x7, kContrastActive);
+LabelFrameWidget widCanModeFrame(&widCanMode, "MODE", Font3x5, kContrastBackground);
+
+NumericTextWidget widCanFreq(CAN_FREQUENCY, 7, Font5x7, kContrastActive);
+LabelFrameWidget widCanFreqFrame(&widCanFreq, "FREQ", Font3x5, kContrastBackground);
+
 StaleNumericTextWidget widCanRx(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale);
 LabelFrameWidget widCanRxFrame(&widCanRx, "RX", Font3x5, kContrastBackground);
 
 StaleNumericTextWidget widCanErr(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale);
 LabelFrameWidget widCanErrFrame(&widCanErr, "ERR", Font3x5, kContrastBackground);
 
+
+Widget* widCanConfigContents[] = {&widCanModeFrame, &widCanFreqFrame};
+HGridWidget<2> widCanConfig(widCanConfigContents);
+
 Widget* widCanOverviewContents[] = {&widCanRxFrame, &widCanErrFrame};
 HGridWidget<2> widCanOverview(widCanOverviewContents);
 
-Widget* widMainContents[] = {&widVersionGrid, &widCanOverview};
-VGridWidget<2> widMain(widMainContents);
+Widget* widMainContents[] = {&widVersionGrid, &widCanConfig, &widCanOverview};
+VGridWidget<3> widMain(widMainContents);
 
 
 TextWidget widBootData("BOOT", 0, Font5x7, kContrastActive);
@@ -108,12 +118,34 @@ static bool transmitCANMessage(const CANMessage& msg) {
 
 static bool setBaudrate(int baudrate) {
   debugInfo("Set baud = %i", baudrate);
-  return Can.frequency(baudrate) == 1;
+  bool success = Can.frequency(baudrate) == 1;
+  if (success) {
+    widCanFreq.setValue(baudrate);
+  }
+  return success;
 }
 
 static bool setMode(CAN::Mode mode) {
   debugInfo("Set mode = %i", mode);
-  return Can.mode(mode) == 1;
+  bool success = Can.mode(mode) == 1;
+  if (success) {
+    if (mode == CAN::Mode::Reset) {
+      widCanMode.setValue("RESET");
+    } else if (mode == CAN::Mode::Normal) {
+      widCanMode.setValue("NORMAL");
+    } else if (mode == CAN::Mode::Silent) {
+      widCanMode.setValue("SILENT");
+    } else if (mode == CAN::Mode::LocalTest) {
+      widCanMode.setValue("LTEST");
+    } else if (mode == CAN::Mode::GlobalTest) {
+      widCanMode.setValue("GTEST");
+    } else if (mode == CAN::Mode::SilentTest) {
+      widCanMode.setValue("STEST");
+    } else {
+      widCanMode.setValue("UNK");
+    }
+  }
+  return success;
 }
 
 void selfTest() {
