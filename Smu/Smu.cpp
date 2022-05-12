@@ -345,8 +345,8 @@ int main() {
       case ButtonGesture::Gesture::kHoldRepeat:
         switch (selected) {
           case 0:  targetV -= 100;  Smu.setVoltageMv(targetV);  voltageChanged = true;  break;
-          case 1:  targetISrc -= 100;  Smu.setCurrentSourceMa(targetISrc);  break;
-          case 2:  targetISnk -= 100;  Smu.setCurrentSinkMa(targetISnk);  break;
+          case 1:  targetISrc -= 25;  Smu.setCurrentSourceMa(targetISrc);  break;
+          case 2:  targetISnk -= 25;  Smu.setCurrentSinkMa(targetISnk);  break;
           default: break;
         }
         break;
@@ -357,8 +357,8 @@ int main() {
       case ButtonGesture::Gesture::kHoldRepeat:
         switch (selected) {
           case 0:  targetV += 100;  Smu.setVoltageMv(targetV);  voltageChanged = true;  break;
-          case 1:  targetISrc += 100;  Smu.setCurrentSourceMa(targetISrc);  break;
-          case 2:  targetISnk += 100;  Smu.setCurrentSinkMa(targetISnk);  break;
+          case 1:  targetISrc += 25;  Smu.setCurrentSourceMa(targetISrc);  break;
+          case 2:  targetISnk += 25;  Smu.setCurrentSinkMa(targetISnk);  break;
           default: break;
         }
         break;

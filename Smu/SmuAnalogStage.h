@@ -43,11 +43,21 @@ public:
   }
 
   void setCurrentSourceMa(int32_t setCurrentSource) {
-    setCurrentSourceDac(currentToDac(setCurrentSource));
+    uint16_t limit = currentToDac(500);
+    uint16_t setDac = currentToDac(setCurrentSource);
+    if (setDac < limit) {  // dac values are inverted
+      setDac = limit;
+    }
+    setCurrentSourceDac(setDac);
   }
 
   void setCurrentSinkMa(int32_t setCurrentSink) {
-    setCurrentSinkDac(currentToDac(setCurrentSink));
+    uint16_t limit = currentToDac(-500);
+    uint16_t setDac = currentToDac(setCurrentSink);
+    if (setDac > limit) {  // dac value are inverted
+      setDac = limit;
+    }
+    setCurrentSinkDac(setDac);
   }
 
   void setVoltageDac(uint16_t dacValue) {
