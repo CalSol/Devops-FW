@@ -10,7 +10,9 @@ import smucomms.{SmuCommand, SmuResponse}
 import smuconfig.SmuConfig
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, File}
+import java.time.Instant
 import scala.io.StdIn.readLine
+import scala.util.Random
 
 
 // Wrapper around the HID device that implements the serialized-proto-over-reports format
@@ -18,6 +20,9 @@ import scala.io.StdIn.readLine
 class HidDeviceProto[WriteType <: GeneratedMessage, ReadType <: GeneratedMessage](
     device: HidDevice, sendReportSize: Int,
     writeObj: GeneratedMessageCompanion[WriteType], readObj: GeneratedMessageCompanion[ReadType]) {
+  val kReadLen = 64;
+  val kTimeoutMs = 100;
+
   def write(pb: WriteType): Unit = {
     val outputStream = new ByteArrayOutputStream()
     pb.writeDelimitedTo(outputStream)
@@ -43,7 +48,7 @@ class HidDeviceProto[WriteType <: GeneratedMessage, ReadType <: GeneratedMessage
   }
 
   def read(): Option[ReadType] = {
-    var readData = device.read().map(_.toByte)
+    var readData = device.read(kReadLen, kTimeoutMs).map(_.toByte)
     if (readData.isEmpty) {
       println(s"Empty read data (timeout?)")  // TODO better logging / error infra
       return None
@@ -53,7 +58,7 @@ class HidDeviceProto[WriteType <: GeneratedMessage, ReadType <: GeneratedMessage
 
     var bytesReceived: Int = readData.length
     while (bytesReceived < size) {
-      val continuedReadData = device.read().map(_.toByte)
+      val continuedReadData = device.read(kReadLen, kTimeoutMs).map(_.toByte)
       if (continuedReadData.isEmpty) {
         println(s"Empty read data (timeout?)")  // TODO better logging / error infra
         return None
@@ -194,6 +199,21 @@ object Main extends App {
 
   println(s"${calDacSequence.size} calibration points: ${calDacSequence.mkString(", ")}")
   readLine()
+
+  while (true) {
+    val currentSet = (Random.nextFloat() * 100 + 25).toInt
+    val control = smucomms.Control(
+      voltage = 3400,
+      currentSource = currentSet,
+      currentSink = -100,
+      enable = true
+    )
+    val response = smuDevice.command(SmuCommand(SmuCommand.Command.SetControl(control)))
+    println(s"set I=$currentSet => $response")
+
+    Instant.now.getNano
+    Thread.sleep(100)
+  }
 
   val calCsv = CSVWriter.open(new File("cal.csv"))
   calCsv.writeRow(Seq("measured", "adcVoltage", "adcCurrent", "dacVoltage", "dacCurrentSource", "dacCurrentSink"))
