@@ -8,9 +8,11 @@
 
 #include "RgbActivityLed.h"
 #include "DmaSerial.h"
+#include "ButtonGesture.h"
 
-#include "slcan.h"
 #include "NonBlockingUsbSerial.h"
+#include "encoding.h"  // for telemetry emulation mode
+#include "slcan.h"
 
 #include "St7735sGraphics.h"
 #include "DefaultFonts.h"
@@ -46,6 +48,7 @@ NonBlockingUSBSerial UsbSerial(0x1209, 0x0001, 0x0001, false);
 USBSLCANSlave Slcan(UsbSerial);
 
 DigitalIn SwitchUsb(P0_17, PinMode::PullUp);
+ButtonGesture SwitchUsbGesture(SwitchUsb);
 DigitalIn SwitchCan(P0_29, PinMode::PullUp);
 
 //
@@ -83,25 +86,27 @@ HGridWidget<2> widVersionGrid(widVersionContents);
 
 TextWidget widCanMode("NORMAL", 6, Font5x7, kContrastActive);
 LabelFrameWidget widCanModeFrame(&widCanMode, "MODE", Font3x5, kContrastBackground);
-
 NumericTextWidget widCanFreq(CAN_FREQUENCY, 7, Font5x7, kContrastActive);
 LabelFrameWidget widCanFreqFrame(&widCanFreq, "FREQ", Font3x5, kContrastBackground);
-
-StaleNumericTextWidget widCanRx(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale);
-LabelFrameWidget widCanRxFrame(&widCanRx, "RX", Font3x5, kContrastBackground);
-
-StaleNumericTextWidget widCanErr(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale);
-LabelFrameWidget widCanErrFrame(&widCanErr, "ERR", Font3x5, kContrastBackground);
-
-
 Widget* widCanConfigContents[] = {&widCanModeFrame, &widCanFreqFrame};
 HGridWidget<2> widCanConfig(widCanConfigContents);
 
+StaleNumericTextWidget widCanRx(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale);
+LabelFrameWidget widCanRxFrame(&widCanRx, "RX", Font3x5, kContrastBackground);
+StaleNumericTextWidget widCanErr(0, 5, 100 * 1000, Font5x7, kContrastActive, kContrastStale);
+LabelFrameWidget widCanErrFrame(&widCanErr, "ERR", Font3x5, kContrastBackground);
 Widget* widCanOverviewContents[] = {&widCanRxFrame, &widCanErrFrame};
 HGridWidget<2> widCanOverview(widCanOverviewContents);
 
-Widget* widMainContents[] = {&widVersionGrid, &widCanConfig, &widCanOverview};
-VGridWidget<3> widMain(widMainContents);
+TextWidget widUsbStatus("     ", 5, Font5x7, kContrastActive);
+LabelFrameWidget widUsbStatusFrame(&widUsbStatus, "USB", Font3x5, kContrastBackground);
+TextWidget widUsbInterface("     ", 5, Font5x7, kContrastActive);
+LabelFrameWidget widUsbInterfaceFrame(&widUsbInterface, "INTERFACE", Font3x5, kContrastBackground);
+Widget* widCanConnectionContents[] = {&widUsbStatusFrame, &widUsbInterfaceFrame};
+HGridWidget<2> widCanConnection(widCanConnectionContents);
+
+Widget* widMainContents[] = {&widVersionGrid, &widCanConfig, &widCanOverview, &widCanConnection};
+VGridWidget<4> widMain(widMainContents);
 
 
 TextWidget widBootData("BOOT", 0, Font5x7, kContrastActive);
@@ -226,6 +231,8 @@ int main() {
 
   selfTest();
 
+  bool inTelemetryMode = false;  // false = SLCAN mode, true = telemetry emulation mode
+
   // Allow the SLCAN interface to transmit messages
   Slcan.setTransmitHandler(&transmitCANMessage);
   Slcan.setBaudrateHandler(&setBaudrate);
@@ -246,14 +253,39 @@ int main() {
       }
     }
 
+    switch (SwitchUsbGesture.update()) {
+      case ButtonGesture::Gesture::kHoldTransition:
+        inTelemetryMode = !inTelemetryMode;
+        break;
+      default: break;
+    }
+
     Timestamped_CANMessage msg;
     while (CanBuffer.read(msg)) {
-      if (!msg.isError) {
-        Slcan.putCANMessage(msg.data.msg);
+      if (!msg.isError) {  
+        if (UsbSerial.connected()) {
+          if (!inTelemetryMode) {
+            if (Slcan.putCANMessage(msg.data.msg)) {
+              UsbStatusLed.pulse(RgbActivity::kOff);
+            } else {
+              UsbStatusLed.pulse(RgbActivity::kRed);
+            }
+            UsbStatusTicker.reset();
+          } else {
+            uint8_t buffer[TachyonEncoding::MAX_ENCODED_SIZE];
+            uint32_t len = TachyonEncoding::encode(msg.data.msg, buffer);
+            if (UsbSerial.writeBlockNB(buffer, len)) {
+              UsbStatusLed.pulse(RgbActivity::kOff);
+            } else {
+              UsbStatusLed.pulse(RgbActivity::kRed);
+            }
+            UsbStatusTicker.reset();
+          }
+        }
         thisCanRxCount++;
         widCanRx.fresh();
         CanStatusLed.pulse(RgbActivity::kGreen);
-        debugInfo("RXMeg %03lx %s %d", msg.data.msg.id, (msg.data.msg.type == CANStandard) ? "S" : "E", msg.data.msg.len);
+        debugInfo("RXMsg %03lx %s %d", msg.data.msg.id, (msg.data.msg.type == CANStandard) ? "S" : "E", msg.data.msg.len);
       } else {
         thisCanErrCount++;
         widCanErr.fresh();
@@ -264,32 +296,43 @@ int main() {
 
     // Loopback messages don't seem to trigger interrupts, so we need to directly read the CAN block
     // TODO: can this cause a race condition with the interrupt?
-    CANMessage canMsg;
-    while (Can.read(canMsg)){
-        Slcan.putCANMessage(canMsg);
-        thisCanRxCount++;
-        widCanRx.fresh();
-        CanStatusLed.pulse(RgbActivity::kGreen);
-        debugInfo("C RXMsg %03lx %s %d", canMsg.id, (canMsg.type == CANStandard) ? "S" : "E", canMsg.len);
-    }
+    // CANMessage canMsg;
+    // while (Can.read(canMsg)){
+    //     Slcan.putCANMessage(canMsg);
+    //     thisCanRxCount++;
+    //     widCanRx.fresh();
+    //     CanStatusLed.pulse(RgbActivity::kGreen);
+    //     debugInfo("C RXMsg %03lx %s %d", canMsg.id, (canMsg.type == CANStandard) ? "S" : "E", canMsg.len);
+    // }
 
     if (UsbSerial.connected()) {
+      widUsbStatus.setValue(" CON ");
       UsbStatusLed.setIdle(RgbActivity::kGreen);
     } else if (UsbSerial.configured()) {
+      widUsbStatus.setValue(" CNF ");
       UsbStatusLed.setIdle(RgbActivity::kYellow);
     } else {
+      widUsbStatus.setValue(" DIS ");
       UsbSerial.connect(false);
       UsbStatusLed.setIdle(RgbActivity::kRed);
     }
     if (UsbStatusTicker.checkExpired()) {  // to show liveness when there's no other activity
-      UsbStatusLed.pulse(RgbActivity::kOff);
+      UsbStatusLed.pulse(RgbActivity::kYellow);
     }
 
-    // TODO USB activity lights, but as currently SLCAN completely encapsulates the USB interface
-    if (UsbSerial.connected()) {
-      Slcan.update();
+    if (!inTelemetryMode) {
+      widUsbInterface.setValue("SLCAN");
     } else {
-      Slcan.reset();
+      widUsbInterface.setValue("TELEM");
+    }
+
+    // TODO USB activity lights on input from PC, but as currently SLCAN completely encapsulates the USB interface
+    if (inTelemetryMode) {
+      if (UsbSerial.connected()) {
+        Slcan.update();
+      } else {
+        Slcan.reset();
+      }
     }
 
     UsbStatusLed.update();
