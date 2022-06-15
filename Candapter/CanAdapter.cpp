@@ -336,7 +336,7 @@ int main() {
     }
 
     // TODO USB activity lights on input from PC, but as currently SLCAN completely encapsulates the USB interface
-    if (inTelemetryMode) {
+    if (!inTelemetryMode) {
       if (UsbSerial.connected()) {
         Slcan.update();
       } else {
