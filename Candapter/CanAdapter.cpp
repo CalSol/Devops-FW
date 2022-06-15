@@ -50,6 +50,7 @@ USBSLCANSlave Slcan(UsbSerial);
 DigitalIn SwitchUsb(P0_17, PinMode::PullUp);
 ButtonGesture SwitchUsbGesture(SwitchUsb);
 DigitalIn SwitchCan(P0_29, PinMode::PullUp);
+ButtonGesture SwitchCanGesture(SwitchCan);
 
 //
 // Debugging defs
@@ -251,6 +252,14 @@ int main() {
         CanStatusLed.pulse(RgbActivity::kBlue);
         debugInfo("CAN reset");
       }
+    }
+
+    switch (SwitchCanGesture.update()) {
+      case ButtonGesture::Gesture::kClickPress:
+        Can.write(CANMessage(42));
+        CanStatusLed.pulse(RgbActivity::kYellow);
+        break;
+      default: break;
     }
 
     switch (SwitchUsbGesture.update()) {
