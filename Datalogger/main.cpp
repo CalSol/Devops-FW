@@ -32,7 +32,7 @@
 /*
  * Local peripheral definitions
  */
-const uint32_t CAN_FREQUENCY = 1000000;
+const uint32_t CAN_FREQUENCY = 500000;
 const uint32_t CAN_HEART_DATALOGGER = 0x049;  // heartbeat CAN ID
 const uint32_t CAN_CORE_STATUS_DATALOGGER = 0x749;  // core status CAN ID
 
@@ -87,6 +87,34 @@ TimerTicker CanCheckTicker(1 * 1000 * 1000, UsTimer);
 TimerTicker FileSyncTicker(5 * 60 * 1000 * 1000, UsTimer);
 TimerTicker RemountTicker(250 * 1000, UsTimer);
 TimerTicker UndismountTicker(10 * 1000 * 1000, UsTimer);
+
+TimerTicker ChargerTicker(200 * 1000, UsTimer);
+uint16_t swap16(uint16_t value)
+{
+    uint16_t result = 0;
+    result |= (value & 0x00FF) << 8;
+    result |= (value & 0xFF00) >> 8;
+    return result;
+}
+#define CAN_CHARGER_CONTROL 0x1806E5F4
+#define CAN_CHARGER_STATUS 0x18FF50E5
+struct ChargerControlStruct {
+  uint16_t voltage_be;
+  uint16_t current_be;
+  uint8_t control;
+  uint8_t reserved1;
+  uint8_t reserved2;
+  uint8_t reserved3;
+};
+struct ChargerStatusStruct {
+  uint16_t voltage_be;
+  uint16_t current_be;
+  uint8_t status;
+  uint8_t reserved1;
+  uint8_t reserved2;
+  uint8_t reserved3;
+};
+
 
 TimerTicker EInkTicker(30 * 1000 * 1000, UsTimer);
 
@@ -631,6 +659,18 @@ int main() {
         SdStatusLed.pulse(RgbActivity::kYellow);
       }
     }
+
+
+      if(ChargerTicker.checkExpired()) {
+        ChargerControlStruct charger_control;
+
+        charger_control.control = 0;
+        charger_control.voltage_be = swap16(115*10 + 7);
+        charger_control.current_be = swap16(10*10);
+        CanBuffer.write(CANMessage(CAN_CHARGER_CONTROL, reinterpret_cast<const char*>(&charger_control), 8, CANData, CANExtended));
+
+        MainStatusLed.pulse(RgbActivity::kCyan);
+      }
 
     MainStatusLed.update();
     CanStatusLed.update();
