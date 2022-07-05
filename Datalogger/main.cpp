@@ -32,7 +32,7 @@
 /*
  * Local peripheral definitions
  */
-const uint32_t CAN_FREQUENCY = 1000000;
+const uint32_t CAN_FREQUENCY = 500000;
 const uint32_t CAN_HEART_DATALOGGER = 0x049;  // heartbeat CAN ID
 const uint32_t CAN_CORE_STATUS_DATALOGGER = 0x749;  // core status CAN ID
 
@@ -339,8 +339,8 @@ int main() {
 
   // For manually resetting the RTC
 //  while (SdSwitch);
-//  Rtc.settime({20, 55, 20,  23, 11 - 1, 2019 - 1900});
-//  //           ss  mm  hh   dd  mm      yyyy
+//  Rtc.settime({30, 23, 14,  05, 07 - 1, 2022 - 1900});
+ //           ss  mm  hh   dd  mm      yyyy
 
 
   tm time;
