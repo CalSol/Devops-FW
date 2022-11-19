@@ -7,7 +7,7 @@
 #include "debug.h"
 
 #include "CanStruct.h"
-
+#include "rtos.h"
 #include "WDT.h"
 #include "AnalogPeripherals.h"
 #include "PCF2129.h"
